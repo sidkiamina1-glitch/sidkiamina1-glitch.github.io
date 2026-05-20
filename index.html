@@ -1,0 +1,64 @@
+---
+layout: default
+title: About
+---
+
+<section class="bio">
+  <img class="portrait" src="{{ '/assets/files/portrait.jpg' | relative_url }}" alt="{{ site.author.name }}" onerror="this.style.display='none'">
+  <div class="intro">
+    <p>
+      I am a PhD Candidate in Economics at <strong>[Your University]</strong>, working
+      on industrial organization, insurance markets, and climate risk. My research
+      uses structural methods and detailed regulatory data to study how insurance
+      markets adapt — or fail to adapt — to environmental change.
+    </p>
+    <p>
+      My job market paper studies the California homeowners insurance market under
+      <em>Proposition 103</em> rate regulation, combining CDI rate filing panel data
+      with catastrophe model variation to identify the welfare cost of regulatory
+      friction in the face of growing wildfire exposure.
+    </p>
+    <p>
+      I am advised by <strong>[Advisor Name]</strong>, <strong>[Committee Member]</strong>,
+      and <strong>[Committee Member]</strong>. I will be on the <strong>2026–2027
+      academic job market</strong>.
+    </p>
+
+    <div class="contact-line">
+      {{ site.author.email }} &nbsp;·&nbsp;
+      <a href="{{ site.author.cv_pdf | relative_url }}">CV</a> &nbsp;·&nbsp;
+      {% if site.author.google_scholar %}<a href="{{ site.author.google_scholar }}">Google Scholar</a> &nbsp;·&nbsp;{% endif %}
+      {% if site.author.github %}<a href="{{ site.author.github }}">GitHub</a>{% endif %}
+    </div>
+  </div>
+</section>
+
+<h2>Research Interests</h2>
+<p>
+  Industrial organization · Insurance and financial markets ·
+  Climate economics · Regulation · Structural econometrics
+</p>
+
+<h2>Featured Work</h2>
+
+<div class="paper jmp">
+  <span class="status">Job Market Paper</span>
+  <div class="title">
+    <a href="{{ '/research/' | relative_url }}#jmp">
+      Regulatory Friction and Market Exit in the California Homeowners
+      Insurance Market
+    </a>
+  </div>
+  <div class="abstract">
+    I develop a three-stage structural model of insurer pricing,
+    participation, and portfolio adjustment under Proposition 103 rate
+    regulation. Using a panel of CDI rate filings and catastrophe model
+    score instruments, I quantify how regulatory friction interacts with
+    growing wildfire exposure to produce market exit and coverage distortions.
+  </div>
+  <div class="links">
+    <a href="#">Draft (coming)</a>
+    <a href="#">Slides</a>
+    <a href="{{ '/research/' | relative_url }}">More research →</a>
+  </div>
+</div>

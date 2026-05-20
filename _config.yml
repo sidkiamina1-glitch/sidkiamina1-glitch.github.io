@@ -1,0 +1,42 @@
+# Site settings
+title: Amina [Last Name]
+description: >
+  PhD Candidate in Economics. Research on insurance markets,
+  regulation, and climate risk.
+url: "https://YOURUSERNAME.github.io"
+baseurl: ""
+
+# Personal info
+author:
+  name: Amina [Last Name]
+  email: your.email@university.edu
+  affiliation: Department of Economics, [Your University]
+  position: PhD Candidate
+  pronouns: she/her
+  cv_pdf: /assets/files/cv.pdf
+  google_scholar: # https://scholar.google.com/citations?user=YOUR_ID
+  github: # https://github.com/YOURUSERNAME
+  linkedin: # https://linkedin.com/in/YOURNAME
+  twitter: # https://twitter.com/YOURHANDLE
+  ssrn: # https://papers.ssrn.com/sol3/cf_dev/AbsByAuth.cfm?per_id=YOUR_ID
+
+# Build settings
+markdown: kramdown
+permalink: pretty
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-feed
+
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

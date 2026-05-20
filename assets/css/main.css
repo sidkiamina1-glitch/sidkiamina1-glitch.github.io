@@ -1,0 +1,392 @@
+/* =============================================================
+   Academic site — restrained editorial aesthetic
+   Typography: Crimson Pro (body) + IBM Plex Mono (accents)
+   Single accent color (ink-on-paper with a deep brick red)
+   ============================================================= */
+
+:root {
+  --paper:        #fbfaf6;
+  --paper-2:      #f3f1ea;
+  --ink:          #1a1a1a;
+  --ink-soft:     #3a3a3a;
+  --ink-muted:    #6b6b6b;
+  --rule:         #d9d4c7;
+  --accent:       #8b2a1f;       /* brick red — sparingly */
+  --accent-soft:  #b8584d;
+
+  --serif:  "Crimson Pro", "Hoefler Text", Georgia, serif;
+  --mono:   "IBM Plex Mono", "SF Mono", Menlo, monospace;
+
+  --measure: 38rem;              /* readable line length */
+  --gutter: clamp(1.25rem, 4vw, 2.5rem);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.55;
+  font-weight: 400;
+  font-feature-settings: "kern", "liga", "onum";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle paper texture — barely visible, adds warmth */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.025;
+  background-image:
+    repeating-radial-gradient(circle at 20% 30%, #000 0 1px, transparent 1px 4px),
+    repeating-radial-gradient(circle at 70% 80%, #000 0 1px, transparent 1px 5px);
+}
+
+/* ---------- Layout container ---------- */
+
+.wrap {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* ---------- Header ---------- */
+
+header.site {
+  padding: 3rem 0 1.5rem;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 3rem;
+}
+
+header.site .name {
+  font-family: var(--serif);
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.25rem;
+  line-height: 1.1;
+}
+
+header.site .role {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-muted);
+  margin-bottom: 1.5rem;
+}
+
+nav.primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+nav.primary a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  position: relative;
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+nav.primary a:hover,
+nav.primary a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- Typography ---------- */
+
+h1, h2, h3, h4 {
+  font-family: var(--serif);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+
+h1 {
+  font-size: 2rem;
+  margin: 0 0 1rem;
+  line-height: 1.15;
+}
+
+h2 {
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+  font-weight: 500;
+  margin: 3.5rem 0 1.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.25rem;
+  line-height: 1.3;
+}
+
+p {
+  margin: 0 0 1rem;
+  max-width: var(--measure);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+  transition: background 0.15s;
+}
+
+a:hover {
+  background: rgba(139, 42, 31, 0.08);
+}
+
+em { font-style: italic; }
+strong { font-weight: 600; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: var(--paper-2);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+/* ---------- Bio block ---------- */
+
+.bio {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 2.5rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.bio img.portrait {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 2px;
+  filter: grayscale(15%);
+}
+
+.bio .intro p { max-width: none; }
+
+.bio .contact-line {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  margin-top: 1.25rem;
+  letter-spacing: 0.02em;
+}
+
+.bio .contact-line a {
+  border: none;
+  color: var(--ink-soft);
+}
+
+.bio .contact-line a:hover {
+  color: var(--accent);
+  background: none;
+}
+
+@media (max-width: 640px) {
+  .bio { grid-template-columns: 1fr; gap: 1.5rem; }
+  .bio img.portrait { max-width: 180px; }
+}
+
+/* ---------- Paper list ---------- */
+
+.paper {
+  margin: 0 0 2.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid transparent;
+  transition: border-color 0.2s, padding-left 0.2s;
+}
+
+.paper:hover {
+  border-left-color: var(--accent);
+}
+
+.paper.jmp {
+  border-left-color: var(--accent);
+  background: linear-gradient(to right, rgba(139,42,31,0.04), transparent 60%);
+  padding: 0.75rem 1rem 1rem;
+  margin-left: -1rem;
+}
+
+.paper .title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 0.15rem;
+}
+
+.paper .title a {
+  color: var(--ink);
+  border-bottom-color: transparent;
+}
+
+.paper .title a:hover {
+  color: var(--accent);
+  background: none;
+  border-bottom-color: var(--accent);
+}
+
+.paper .coauthors {
+  font-style: italic;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.paper .status {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 2px 8px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  border-radius: 2px;
+  margin-bottom: 0.75rem;
+}
+
+.paper.jmp .status {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.paper .abstract {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+
+.paper .links {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.paper .links a {
+  color: var(--ink-soft);
+  border-bottom: 1px dotted var(--ink-muted);
+}
+
+.paper .links a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: none;
+}
+
+/* ---------- Teaching list ---------- */
+
+.teaching-item {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.75rem;
+  align-items: baseline;
+}
+
+.teaching-item .term {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-top: 0.2rem;
+}
+
+.teaching-item .course-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 0.15rem;
+}
+
+.teaching-item .course-meta {
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .teaching-item { grid-template-columns: 1fr; gap: 0.25rem; }
+}
+
+/* ---------- Footer ---------- */
+
+footer.site {
+  margin-top: 6rem;
+  padding: 2rem 0 3rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+footer.site a {
+  color: var(--ink-muted);
+  border: none;
+}
+
+footer.site a:hover {
+  color: var(--accent);
+  background: none;
+}
+
+/* ---------- Small print ---------- */
+
+.note {
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* Subtle entry animation — single, controlled */
+main {
+  animation: fade-in 0.6s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Print: clean CV-like rendering */
+@media print {
+  body::before { display: none; }
+  nav.primary, footer.site { display: none; }
+  body { font-size: 11pt; }
+}
