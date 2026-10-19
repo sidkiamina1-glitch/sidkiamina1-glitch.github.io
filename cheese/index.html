@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+<title>The Cheese Exchange</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: a market floor. Sticky ticker bar (round + clock), then one working surface per role. */
+:root{
+  --bg:#EDF0EB; --surface:#F8FAF6; --sunk:#E3E8E1; --ink:#18201C; --muted:#5A655F; --line:#D1D8CF;
+  --accent:#B5312A; --accent-ink:#FFFFFF; --accent-soft:#F3DCD9;
+  --good:#2D7A4C; --good-soft:#D8EEDF; --warn:#9A6414; --warn-soft:#F6E7CC;
+  --br:#8A5A9E; --pa:#3A8756; --go:#D06D17; --cd:#2F6AB0; --em:#B8921A;
+  --f-display:"Bricolage Grotesque","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111613; --surface:#19201C; --sunk:#0D110F; --ink:#E5EBE4; --muted:#9AA69F; --line:#2B3530;
+  --accent:#E25B50; --accent-ink:#1A0D0B; --accent-soft:#3A1E1B;
+  --good:#5FC58C; --good-soft:#173324; --warn:#E3AA4E; --warn-soft:#3A2C13;
+  --br:#BC8FD0; --pa:#6CC48A; --go:#F09A4C; --cd:#6EA2E6; --em:#E2C14D; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111613; --surface:#19201C; --sunk:#0D110F; --ink:#E5EBE4; --muted:#9AA69F; --line:#2B3530;
+  --accent:#E25B50; --accent-ink:#1A0D0B; --accent-soft:#3A1E1B;
+  --good:#5FC58C; --good-soft:#173324; --warn:#E3AA4E; --warn-soft:#3A2C13;
+  --br:#BC8FD0; --pa:#6CC48A; --go:#F09A4C; --cd:#6EA2E6; --em:#E2C14D; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--ink)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1}
+h2{font-size:1.45rem;font-weight:700}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.muted{color:var(--muted)}
+
+/* ticker bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ink);color:var(--bg)}
+.bar .wrap{display:flex;align-items:center;gap:14px;padding-block:10px;flex-wrap:wrap}
+.brand{font-family:var(--f-display);font-weight:800;font-size:1.15rem;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.wheel{width:22px;height:22px;border-radius:50%;background:conic-gradient(var(--go) 0 300deg,transparent 300deg);border:2px solid var(--bg);flex:none}
+.bar .round{font-size:.9rem;opacity:.85}
+.bar .spacer{flex:1}
+.clock{font-family:var(--f-mono);font-weight:600;font-size:1.25rem;padding:2px 10px;border-radius:6px;background:color-mix(in srgb,var(--bg) 14%,transparent)}
+.clock.low{background:var(--accent);color:var(--accent-ink)}
+.tabs{display:flex;gap:4px}
+.tabs button{background:transparent;color:var(--bg);border:1px solid color-mix(in srgb,var(--bg) 30%,transparent);border-radius:999px;padding:4px 12px;font:600 .82rem var(--f-body);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--bg);color:var(--ink)}
+
+main{padding-block:22px 48px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grid{display:grid;gap:16px}
+.g-2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.g-side{grid-template-columns:minmax(0,340px) minmax(0,1fr)}
+.g-proj{grid-template-columns:minmax(0,1fr) minmax(0,340px)}
+@media (max-width:820px){.g-2,.g-side,.g-proj{grid-template-columns:minmax(0,1fr)}}
+
+button.btn{font:600 .92rem var(--f-body);border-radius:8px;padding:9px 16px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button.btn:hover:not(:disabled){border-color:var(--ink)}
+button.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.btn.primary:hover:not(:disabled){filter:brightness(1.07);border-color:var(--accent)}
+button.btn.small{padding:5px 11px;font-size:.84rem}
+button.btn:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=text],input[type=number],select{font:500 .95rem var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+input[type=number]{width:4.2em;font-family:var(--f-mono)}
+
+/* cheese chip */
+.chip{display:inline-flex;align-items:center;gap:7px;font-weight:600;white-space:nowrap}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--cc);flex:none;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--surface) 35%,transparent)}
+.c-BR{--cc:var(--br)} .c-PA{--cc:var(--pa)} .c-GO{--cc:var(--go)} .c-CD{--cc:var(--cd)} .c-EM{--cc:var(--em)}
+
+/* country passport */
+.passport{display:flex;gap:16px;align-items:center;border-radius:var(--r);padding:16px 18px;background:color-mix(in srgb,var(--cc) 16%,var(--surface));border:1px solid color-mix(in srgb,var(--cc) 45%,var(--line))}
+.passport .big{width:54px;height:54px;border-radius:50%;background:var(--cc);flex:none;display:grid;place-items:center;font:800 1.2rem var(--f-display);color:var(--surface)}
+.passport h2{font-size:1.6rem}
+
+/* platter */
+.platter{display:flex;flex-direction:column}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line)}
+.prow:last-child{border-bottom:0}
+.pips{display:flex;gap:4px;align-items:center}
+.pip{width:22px;height:22px;border-radius:5px;border:1.5px dashed var(--line);display:grid;place-items:center;font:600 .68rem var(--f-mono);color:var(--muted)}
+.pip.on{background:var(--cc);border:1.5px solid var(--cc);color:var(--surface)}
+.pip.extra{width:auto;padding:0 6px;border-style:solid;background:var(--sunk)}
+.count{font:600 1.05rem var(--f-mono);min-width:2.2em;text-align:right}
+.score-big{font:800 3rem/1 var(--f-display);letter-spacing:-.02em}
+.score-of{font:600 1rem var(--f-mono);color:var(--muted)}
+
+/* offers */
+.offer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.offer .terms{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.offer .who{font-size:.8rem;color:var(--muted)}
+.arrow{color:var(--muted);font-family:var(--f-mono)}
+.melt{font-size:.78rem;color:var(--warn);font-weight:600}
+.list{display:flex;flex-direction:column;gap:8px}
+.empty{padding:16px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);text-align:center;font-size:.92rem}
+.pill{display:inline-block;font:600 .72rem var(--f-body);text-transform:uppercase;letter-spacing:.07em;padding:2px 8px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.pill.live{background:var(--good-soft);color:var(--good)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.red{background:var(--accent-soft);color:var(--accent)}
+
+.composer{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.composer .w{font-weight:600;color:var(--muted)}
+
+/* allocation */
+.alloc-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:700 1.1rem var(--f-mono);cursor:pointer}
+.stepper button:disabled{opacity:.35;cursor:not-allowed}
+.tokens{display:flex;gap:3px;flex-wrap:wrap}
+.tok{width:16px;height:16px;border-radius:50%;background:var(--accent)}
+.tok.spent{background:transparent;border:1.5px solid var(--line)}
+
+/* feed */
+.feed{display:flex;flex-direction:column;gap:6px;font-size:.88rem}
+.feed div{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* instructor */
+.steps{display:flex;gap:6px;flex-wrap:wrap}
+.step{flex:1;min-width:92px;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
+.step b{display:block;font-family:var(--f-display);font-size:.98rem}
+.step small{color:var(--muted);font-size:.76rem}
+.step.cur{border-color:var(--accent);background:var(--accent-soft)}
+.step.done{opacity:.6}
+.roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.roster ul{list-style:none;margin:6px 0 0;padding:0;font-size:.88rem}
+.roster li{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
+.on-dot{width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block;margin-right:6px}
+.on-dot.off{background:var(--line)}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-radius:8px;background:var(--accent-soft)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.kpi{padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.kpi .v{font:700 1.5rem var(--f-mono)}
+
+/* projector */
+.proj-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.proj-head h1{font-size:clamp(2rem,5vw,3.6rem);font-weight:800;letter-spacing:-.02em}
+.proj-clock{font:600 clamp(2.4rem,6vw,4.4rem)/1 var(--f-mono)}
+.bars{display:flex;flex-direction:column;gap:14px}
+.barrow{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr) auto;gap:14px;align-items:center}
+.track{height:34px;border-radius:6px;background:var(--sunk);overflow:hidden;position:relative}
+.fill{height:100%;background:var(--cc);border-radius:6px;transition:width .6s ease}
+.track .tick{position:absolute;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--ink) 25%,transparent)}
+.barval{font:700 1.4rem var(--f-mono);min-width:3.2em;text-align:right}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}}
+
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+td:first-child{font-family:var(--f-body)}
+.scroll{overflow-x:auto}
+.heat{border-radius:4px;padding:4px 8px;display:inline-block;min-width:2.4em;text-align:center}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;font-size:.9rem;z-index:20;max-width:calc(100% - 32px)}
+.notice{padding:12px 14px;border-radius:8px;background:var(--warn-soft);color:var(--ink);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);font-size:.92rem}
+.rule{font-size:1rem;max-width:62ch}
+ol.qs{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;max-width:70ch}
+.codebox{font:800 clamp(2.6rem,9vw,5.5rem)/1 var(--f-mono);letter-spacing:.12em;color:var(--accent)}
+.landing{max-width:860px}
+.choice{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:700px){.choice{grid-template-columns:minmax(0,1fr)}}
+input.code{font:700 1.4rem var(--f-mono);letter-spacing:.2em;text-transform:uppercase;width:7em}
+.status{font-size:.8rem;padding:2px 9px;border-radius:999px;background:color-mix(in srgb,var(--bg) 14%,transparent)}
+.status.bad{background:var(--accent);color:var(--accent-ink)}
+</style>
+</head>
+<body>
+
+
+<style>[hidden]{display:none!important}img{max-width:100%}</style>
+<header class="bar"><div class="wrap">
+  <div class="brand"><span class="wheel" aria-hidden="true"></span>The Cheese Exchange</div>
+  <span class="round" id="barRound">Welcome</span>
+  <span class="status" id="netStatus" hidden></span>
+  <span class="spacer"></span>
+  <nav class="tabs" id="tabs" hidden>
+    <button type="button" data-tab="control" aria-pressed="true">Control</button>
+    <button type="button" data-tab="projector" aria-pressed="false">Projector</button>
+    <button type="button" data-tab="debrief" aria-pressed="false">Debrief</button>
+  </nav>
+  <span class="clock" id="clock" hidden>--:--</span>
+</div></header>
+
+<main class="wrap" id="main">
+  <div class="panel stack">
+    <h2>Loading the market…</h2>
+    <p class="muted">If this message stays, check that your browser allows JavaScript.</p>
+  </div>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(() => {
+// ---------- game constants ----------
+const CHEESES = [
+  {c:'BR', cheese:'Brie',     country:'France',      iso:'FR'},
+  {c:'PA', cheese:'Parmesan', country:'Italy',       iso:'IT'},
+  {c:'GO', cheese:'Gouda',    country:'Netherlands', iso:'NL'},
+  {c:'CD', cheese:'Cheddar',  country:'USA',         iso:'US'},
+  {c:'EM', cheese:'Emmental', country:'Switzerland', iso:'CH'},
+];
+const BY = Object.fromEntries(CHEESES.map(x => [x.c, x]));
+const TOKENS = 12, ENDOW = 12, FOREIGN_COST = 3, MAXQ = 12;
+const PEER_PREFIX = 'cheese-exchange-v1-';
+const ROUNDS = {
+  1:{name:'No trade', tag:'Autarky', rule:`Borders are closed. Spend ${TOKENS} production tokens: your own cheese costs 1 token per card, any foreign cheese costs ${FOREIGN_COST}.`},
+  2:{name:'Free trade', tag:'Open markets', rule:`You start with ${ENDOW} cards of your own cheese. Post offers and accept offers from other countries to build a varied platter.`},
+  3:{name:'Trade costs', tag:'Shipping melts cheese', rule:`Same as free trade, but part of every shipment melts on the way. The market shows how many cards actually arrive.`},
+  4:{name:'Switzerland joins', tag:'A new variety', rule:`Emmental enters the market. Some traders now represent Switzerland. Trade freely across five countries.`},
+};
+const pts = n => (n>=1?5:0)+(n>=2?3:0)+(n>=3?1:0);
+const codesFor = round => round>=4 ? CHEESES.map(x=>x.c) : CHEESES.slice(0,4).map(x=>x.c);
+const arrive = (q,f) => q - Math.round(q*f + 1e-9);
+const rid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const chip = (c, n) => `<span class="chip c-${c}"><span class="dot"></span>${n!=null?`<span class="num">${n}</span> `:''}${esc(BY[c]?.cheese||c)}</span>`;
+const countryName = c => BY[c]?.country || '—';
+const meltLabel = f => f>=0.5 ? 'About half of each shipment melts' : f>0 ? 'About 1 in 3 cards of each shipment melts' : 'No shipping losses';
+const newCode = () => Array.from({length:4},()=> 'ABCDEFGHJKMNPQRSTUVWXYZ'[Math.floor(Math.random()*23)]).join('');
+const cleanCode = s => String(s||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
+
+function computeLedger(L){
+  const codes = codesFor(L.round);
+  const inv = {}, res = {};
+  for (const [k,c] of Object.entries(L.roster||{})){
+    inv[k] = {}; res[k] = {};
+    codes.forEach(x => { inv[k][x]=0; res[k][x]=0; });
+    if (L.round===1){
+      const a = L.alloc?.[k];
+      if (a) codes.forEach(x => inv[k][x] = a[x]||0); else inv[k][c] = TOKENS;
+    } else inv[k][c] = ENDOW;
+  }
+  const offers = Object.values(L.offers||{}).sort((a,b)=>a.t-b.t);
+  const trades = [];
+  for (const o of offers){
+    if (o.st==='filled' && inv[o.by] && inv[o.to]){
+      inv[o.by][o.give[0]] -= o.give[1]; inv[o.by][o.get[0]] += o.pr;
+      inv[o.to][o.get[0]] -= o.get[1];  inv[o.to][o.give[0]] += o.ar;
+      trades.push(o);
+    } else if (o.st==='open' && res[o.by]) res[o.by][o.give[0]] += o.give[1];
+  }
+  const avail = {}, score = {};
+  for (const k in inv){
+    avail[k] = {}; score[k] = 0;
+    for (const x of codes){ avail[k][x] = inv[k][x]-res[k][x]; score[k] += pts(inv[k][x]); }
+  }
+  return {codes, inv, res, avail, score, trades, offers};
+}
+
+function roundStats(L){
+  const comp = computeLedger(L);
+  const keys = Object.keys(L.roster||{});
+  const byC = {};
+  for (const k of keys){ const c = L.roster[k]; (byC[c] ||= []).push(comp.score[k]); }
+  const ctry = {};
+  for (const c of comp.codes){ const a = byC[c]||[]; ctry[c] = a.length ? a.reduce((s,v)=>s+v,0)/a.length : null; }
+  let shipped=0, arrived=0;
+  const matrix = {};
+  for (const t of comp.trades){
+    const a = L.roster[t.by], b = L.roster[t.to];
+    shipped += t.give[1] + t.get[1]; arrived += t.pr + t.ar;
+    matrix[a] ||= {}; matrix[b] ||= {};
+    matrix[a][b] = (matrix[a][b]||0) + t.give[1];
+    matrix[b][a] = (matrix[b][a]||0) + t.get[1];
+  }
+  const all = keys.map(k=>comp.score[k]);
+  return {comp, players:keys.length, avg: all.length ? all.reduce((s,v)=>s+v,0)/all.length : 0,
+    max: 9*comp.codes.length, ctry, trades: comp.trades.length, shipped, melted: shipped-arrived, matrix};
+}
+
+// ---------- local storage helpers ----------
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch {} },
+  del(k){ try { localStorage.removeItem(k); } catch {} },
+};
+
+// ---------- runtime state ----------
+const S = {
+  mode:'landing',            // landing | host | player
+  code:'', cid: store.get('cx-cid') || rid(), name: store.get('cx-name') || '',
+  state:null, ledgers:{}, peers:[], net:'', hostReady:false,
+  view: store.get('cx-view') || 'control', ops:[], seen:{}, confirm:null,
+  screenKey:'', allocDraft:null, allocTimer:null, hintFn:null, debriefRound:null,
+};
+store.set('cx-cid', S.cid);
+const H = {state:null, ledger:null, ledgers:{}, peer:null, clients:{}};
+let conn = null, playerPeer = null;
+
+const $ = id => document.getElementById(id);
+let toastT;
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, 3200); }
+function setNet(text, bad){ const n=$('netStatus'); n.hidden=!text; n.textContent=text; n.classList.toggle('bad', !!bad); }
+
+// =====================================================================
+// HOST: the instructor's browser runs the market and keeps the record
+// =====================================================================
+function freshState(){
+  return {session: rid(), round:0, phase:'lobby', rid:null, runs:{}, endsAt:0, swissDone:false,
+    players:{}, settings:{minutes:5, melt:1/3}, t:Date.now()};
+}
+function saveHost(){
+  store.set('cx-host', JSON.stringify({code:S.code, state:H.state, ledgers:H.ledgers}));
+}
+let bcastT = null;
+function commit(sDirty, lDirty){
+  if (!sDirty && !lDirty) return;
+  if (lDirty && H.ledger) H.ledgers[H.ledger.rid] = H.ledger;
+  S.state = H.state; S.ledgers = H.ledgers;
+  saveHost();
+  clearTimeout(bcastT); bcastT = setTimeout(broadcast, 120);
+  render();
+}
+function snapshotFor(){
+  const st = H.state;
+  const msg = {t:'state', state: st, ledgers:{}};
+  if (st.rid && H.ledgers[st.rid]) msg.ledgers[st.rid] = H.ledgers[st.rid];
+  if (st.round===5) for (const r of Object.values(st.runs||{})) if (H.ledgers[r]) msg.ledgers[r] = H.ledgers[r];
+  return msg;
+}
+function broadcast(){
+  if (!H.state) return;
+  const msg = snapshotFor();
+  for (const c of Object.values(H.clients)) if (c.conn?.open) { try { c.conn.send(msg); } catch {} }
+}
+function rebuildPeers(){
+  S.peers = Object.values(H.clients).filter(c=>c.conn?.open && c.presence).map(c=>({presence:c.presence, key:'c-'+c.cid}));
+}
+function peerKey(peer){
+  const p = peer.presence || {};
+  return p.role==='player' ? peer.key : null;
+}
+function presentKeys(){
+  const out = new Set();
+  for (const p of S.peers){ const k = peerKey(p); if (k && H.state?.players[k]) out.add(k); }
+  return out;
+}
+function assignCountry(){
+  const allowed = (H.state.swissDone ? codesFor(4) : codesFor(1));
+  const counts = Object.fromEntries(allowed.map(c=>[c,0]));
+  for (const pl of Object.values(H.state.players)) if (pl.c in counts) counts[pl.c]++;
+  return allowed.reduce((best,c)=> counts[c] < counts[best] ? c : best, allowed[0]);
+}
+function assignSwiss(){
+  const present = [...presentKeys()];
+  const n = present.length;
+  let k = Math.max(n>=2 ? 1 : 0, Math.round(n/5));
+  while (k-- > 0){
+    const counts = {};
+    for (const key of present){ const c = H.state.players[key].c; if (c!=='EM') (counts[c] ||= []).push(key); }
+    const biggest = Object.entries(counts).sort((a,b)=>b[1].length-a[1].length)[0];
+    if (!biggest) break;
+    const pick = biggest[1].sort((a,b)=>H.state.players[b].j - H.state.players[a].j)[0];
+    H.state.players[pick].c = 'EM';
+  }
+  H.state.swissDone = true;
+}
+function validQ(q){ return Number.isInteger(q) && q>=1 && q<=MAXQ; }
+
+function hostProcess(){
+  if (S.mode!=='host' || !H.state) return;
+  let sDirty=false, lDirty=false;
+  const st = H.state, L = H.ledger && H.ledger.rid===st.rid ? H.ledger : null;
+  const inRound = st.round>=1 && st.round<=4 && L;
+  for (const peer of S.peers){
+    const p = peer.presence || {};
+    const key = peerKey(peer);
+    if (!key) continue;
+    const name = String(p.name||'').trim().slice(0,24) || 'Trader';
+    let pl = st.players[key];
+    if (!pl){ pl = st.players[key] = {name, c: assignCountry(), j: Date.now()}; sDirty = true; }
+    else if (pl.name !== name){ pl.name = name; sDirty = true; }
+    if (!inRound) continue;
+    if (!(key in L.roster)){ L.roster[key] = pl.c; lDirty = true; }
+    if (st.phase!=='live' || Date.now() > st.endsAt) continue;
+    const ops = Array.isArray(p.ops) ? p.ops.slice(-20) : [];
+    for (const op of ops){
+      if (!op || op.r !== st.rid || typeof op.o!=='string' || op.o.length>24) continue;
+      const myC = L.roster[key];
+      if (op.k==='l'){
+        if (st.round!==1 || typeof op.c!=='object' || !op.c) continue;
+        const codes = codesFor(1); let cost = 0; const a = {};
+        let ok = true;
+        for (const x of codes){ const n = op.c[x]||0; if (!Number.isInteger(n) || n<0 || n>TOKENS){ ok=false; break; } a[x]=n; cost += n*(x===myC?1:FOREIGN_COST); }
+        if (!ok || cost>TOKENS) continue;
+        if (JSON.stringify(L.alloc[key]) !== JSON.stringify(a)){ L.alloc[key] = a; L.ops[op.o]='ok'; lDirty = true; }
+        continue;
+      }
+      if (L.ops[op.o]) continue;
+      if (st.round===1){ L.ops[op.o] = 'Trading is closed in this round'; lDirty=true; continue; }
+      const comp = computeLedger(L);
+      const codes = comp.codes;
+      if (op.k==='o'){
+        const g = op.g, w = op.w;
+        const okShape = Array.isArray(g)&&Array.isArray(w)&&codes.includes(g[0])&&codes.includes(w[0])&&g[0]!==w[0]&&validQ(g[1])&&validQ(w[1]);
+        if (!okShape){ L.ops[op.o]='That offer is not valid'; lDirty=true; continue; }
+        if (w[0]===myC){ L.ops[op.o]=`You already make ${BY[myC].cheese}`; lDirty=true; continue; }
+        if ((comp.avail[key]?.[g[0]]||0) < g[1]){ L.ops[op.o]=`Not enough ${BY[g[0]].cheese} to offer`; lDirty=true; continue; }
+        L.offers[op.o] = {id:op.o, by:key, give:[g[0],g[1]], get:[w[0],w[1]], t:Date.now(), st:'open'};
+        L.ops[op.o]='ok'; lDirty=true;
+      } else if (op.k==='a'){
+        const o = L.offers[op.x];
+        let why = null;
+        if (!o) why = 'That offer is gone';
+        else if (o.st==='filled') why = 'Someone else took that offer first';
+        else if (o.st!=='open') why = 'That offer was withdrawn';
+        else if (o.by===key) why = 'You cannot accept your own offer';
+        else if (L.roster[o.by]===myC) why = 'Trade with a different country';
+        else if ((comp.avail[key]?.[o.get[0]]||0) < o.get[1]) why = `You need ${o.get[1]} ${BY[o.get[0]].cheese} to accept`;
+        if (why){ L.ops[op.o]=why; lDirty=true; continue; }
+        o.st='filled'; o.to=key; o.ft=Date.now();
+        o.pr = arrive(o.get[1], L.melt); o.ar = arrive(o.give[1], L.melt);
+        L.ops[op.o]='ok'; lDirty=true;
+      } else if (op.k==='c'){
+        const o = L.offers[op.x];
+        if (o && o.by===key && o.st==='open'){ o.st='cancelled'; }
+        L.ops[op.o]='ok'; lDirty=true;
+      }
+    }
+  }
+  commit(sDirty, lDirty);
+}
+let procT=null;
+function scheduleProcess(){ clearTimeout(procT); procT = setTimeout(hostProcess, 30); }
+
+const host = {
+  openRound(n){
+    H.state.round = n; H.state.rid = null; H.state.endsAt = 0;
+    H.state.phase = n===5 ? 'final' : 'ready';
+    H.ledger = null; commit(true,false);
+  },
+  startRound(){
+    const st = H.state, r = st.round;
+    if (r<1 || r>4) return;
+    if (r===4 && !st.swissDone) assignSwiss();
+    const id = rid();
+    st.rid = id; st.runs = {...st.runs, [r]: id}; st.phase = 'live';
+    st.endsAt = Date.now() + st.settings.minutes*60000;
+    H.ledger = {rid:id, round:r, melt: r===3 ? st.settings.melt : 0, roster:{}, alloc:{}, offers:{}, ops:{}, t:Date.now()};
+    for (const k of presentKeys()) H.ledger.roster[k] = st.players[k].c;
+    commit(true,true); hostProcess();
+  },
+  endRound(){ H.state.phase = 'closed'; H.state.endsAt = Math.min(H.state.endsAt, Date.now()); commit(true,false); },
+  addTime(){ if (H.state.phase!=='live') return; H.state.endsAt += 60000; commit(true,false); },
+  reset(){ H.state = freshState(); H.ledger = null; H.ledgers = {}; commit(true,false); hostProcess(); },
+  setting(k,v){ H.state.settings[k] = v; commit(true,false); },
+};
+
+function startHost(code, restore){
+  S.mode = 'host'; S.code = code; S.hostReady = false;
+  if (restore){
+    H.state = restore.state; H.ledgers = restore.ledgers || {};
+    H.ledger = H.state.rid ? H.ledgers[H.state.rid] || null : null;
+  } else { H.state = freshState(); H.ledgers = {}; H.ledger = null; }
+  S.state = H.state; S.ledgers = H.ledgers;
+  saveHost();
+  store.set('cx-role','host');
+  history.replaceState(null, '', location.pathname + '#host');
+  openHostPeer(0);
+  render();
+}
+function openHostPeer(attempt){
+  setNet('Opening market…');
+  if (H.peer){ try { H.peer.destroy(); } catch {} }
+  const peer = H.peer = new Peer(PEER_PREFIX + S.code, {debug:0});
+  peer.on('open', () => { S.hostReady = true; setNet('Market open'); render(); });
+  peer.on('connection', c => {
+    c.on('open', () => {
+      c.on('data', d => {
+        if (!d || typeof d!=='object' || d.t!=='presence' || !d.p) return;
+        const cid = String(d.p.cid||'').replace(/[^a-z0-9]/gi,'').slice(0,24);
+        if (!cid) return;
+        const prev = H.clients[cid];
+        if (prev && prev.conn !== c && prev.conn?.open) { try { prev.conn.close(); } catch {} }
+        H.clients[cid] = {cid, conn:c, presence:d.p};
+        c._cid = cid;
+        rebuildPeers(); scheduleProcess();
+        try { c.send(snapshotFor()); } catch {}
+      });
+    });
+    c.on('close', () => { if (c._cid && H.clients[c._cid]?.conn===c) { rebuildPeers(); render(); } });
+  });
+  peer.on('disconnected', () => { setNet('Reconnecting…', true); setTimeout(()=>{ try { peer.reconnect(); } catch {} }, 1500); });
+  peer.on('error', err => {
+    if (err.type==='unavailable-id'){
+      // the previous session for this code is still closing; retry for ~1 minute
+      if (attempt < 12){ setNet('Reclaiming class code…'); setTimeout(()=>openHostPeer(attempt+1), 5000); }
+      else { setNet('Code in use', true); toast('That class code is already running in another window. Close it or start a new game.'); }
+      return;
+    }
+    if (err.type==='network' || err.type==='server-error' || err.type==='socket-error' || err.type==='socket-closed'){
+      setNet('Offline · retrying', true); setTimeout(()=>openHostPeer(attempt), 4000); return;
+    }
+    console.warn('peer error', err.type, err);
+  });
+}
+
+// =====================================================================
+// PLAYER: a student's browser connects to the instructor's market
+// =====================================================================
+function startPlayer(code, name){
+  S.mode = 'player'; S.code = code; S.name = name.trim().slice(0,24);
+  store.set('cx-name', S.name); store.set('cx-code', code); store.set('cx-role','player');
+  history.replaceState(null, '', location.pathname + '?code=' + code);
+  connectPlayer();
+  render();
+}
+let reconnectT = null;
+function connectPlayer(){
+  clearTimeout(reconnectT);
+  setNet('Connecting…');
+  if (!playerPeer || playerPeer.destroyed){
+    playerPeer = new Peer(undefined, {debug:0});
+    playerPeer.on('open', () => dial());
+    playerPeer.on('disconnected', () => { setTimeout(()=>{ try { playerPeer.reconnect(); } catch {} }, 1500); });
+    playerPeer.on('error', err => {
+      if (err.type==='peer-unavailable'){ setNet('Market not found', true); S.notFound = true; render(); reconnectT = setTimeout(dial, 4000); return; }
+      if (['network','server-error','socket-error','socket-closed'].includes(err.type)){ setNet('Offline · retrying', true); reconnectT = setTimeout(connectPlayer, 4000); return; }
+      console.warn('peer error', err.type, err);
+    });
+  } else if (playerPeer.open) dial();
+}
+function dial(){
+  clearTimeout(reconnectT);
+  if (conn && conn.open) return;
+  const c = conn = playerPeer.connect(PEER_PREFIX + S.code, {reliable:true});
+  const giveUp = setTimeout(() => { if (!c.open){ try { c.close(); } catch {}; reconnectT = setTimeout(dial, 2500); } }, 9000);
+  c.on('open', () => {
+    clearTimeout(giveUp); S.notFound = false; setNet('Connected'); pushPresence();
+  });
+  c.on('data', d => {
+    if (!d || d.t!=='state') return;
+    S.state = d.state;
+    S.ledgers = {...S.ledgers, ...d.ledgers};
+    noticeResults(); render();
+  });
+  c.on('close', () => { clearTimeout(giveUp); if (conn===c){ setNet('Reconnecting…', true); reconnectT = setTimeout(dial, 2000); } });
+  c.on('error', () => {});
+}
+function pushPresence(){
+  const p = {role:'player', name:S.name, cid:S.cid, ops:S.ops.slice(-16)};
+  if (conn?.open){ try { conn.send({t:'presence', p}); } catch { toast('Could not reach the class. Check your connection.'); } }
+}
+function sendOp(op){
+  if (!S.state?.rid) return;
+  op.o = rid(); op.r = S.state.rid;
+  if (op.k==='l') S.ops = S.ops.filter(x=>x.k!=='l');
+  S.ops.push(op); S.ops = S.ops.slice(-16);
+  if (!conn?.open) toast('Reconnecting to the class. Your move will be sent when the connection returns.');
+  pushPresence(); render();
+  return op.o;
+}
+function myKey(){ return 'c-'+S.cid; }
+function noticeResults(){
+  const L = S.ledgers[S.state?.rid]; if (!L) return;
+  for (const op of S.ops){
+    if (op.k==='l' || S.seen[op.o]) continue;
+    const res = L.ops?.[op.o];
+    if (res){ S.seen[op.o]=1; if (res!=='ok') toast(res); else if (op.k==='a') toast('Trade done. Check your platter.'); }
+  }
+}
+
+// ---------- timing ----------
+const now = () => Date.now();
+function remaining(){ return S.state?.phase==='live' ? Math.max(0, S.state.endsAt - now()) : 0; }
+const fmt = ms => { const s = Math.ceil(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+function tradingOpen(){ return S.state?.phase==='live' && remaining()>0; }
+setInterval(() => {
+  const st = S.state; const c = $('clock'), pc = $('projClock');
+  if (st?.phase==='live'){
+    const ms = remaining();
+    c.hidden = false; c.textContent = fmt(ms); c.classList.toggle('low', ms<30000);
+    if (pc) pc.textContent = fmt(ms);
+    if (ms<=0 && S.mode==='host' && H.state?.phase==='live') host.endRound();
+    if (ms<=0 && S.screenKey.includes('live')) render();
+  } else { c.hidden = true; if (pc) pc.textContent = st?.phase==='closed' ? 'Closed' : ''; }
+}, 500);
+
+// =====================================================================
+// RENDERING
+// =====================================================================
+function render(){
+  const main = $('main');
+  const st = S.state;
+  $('tabs').hidden = S.mode!=='host';
+  for (const b of $('tabs').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.tab===S.view));
+  if (S.mode==='landing'){ $('barRound').textContent = 'Welcome'; return renderLanding(main); }
+  $('barRound').textContent = !st ? `Class ${S.code}` : st.round===0 ? `Class ${S.code} · Lobby` : st.round===5 ? `Class ${S.code} · Debrief` : `Round ${st.round} · ${ROUNDS[st.round].name}`;
+  if (S.mode==='host'){
+    if (S.view==='projector') return renderProjector(main);
+    if (S.view==='debrief') return renderDebrief(main);
+    return renderControl(main);
+  }
+  return renderStudent(main);
+}
+
+function renderLanding(main){
+  if (S.screenKey==='landing') return;
+  S.screenKey='landing';
+  const qs = new URLSearchParams(location.search);
+  const preset = cleanCode(qs.get('code')) || cleanCode(store.get('cx-code'));
+  const saved = (() => { try { return JSON.parse(store.get('cx-host')||'null'); } catch { return null; } })();
+  main.innerHTML = `<div class="stack landing">
+    <div class="stack" style="gap:8px"><span class="label">A classroom trading game</span>
+      <h1 style="font-size:clamp(2rem,6vw,3.2rem);font-weight:800;letter-spacing:-.02em">Every country makes one cheese. Everyone wants a platter.</h1>
+      <p class="muted rule">Students represent France, Italy, the Netherlands and the USA, trade cards to build varied platters, and see what trade costs and new varieties do to everyone's score.</p></div>
+    <div class="choice">
+      <form class="panel stack" id="joinForm">
+        <span class="label">Students</span><h2>Join your class</h2>
+        <div class="stack" style="gap:6px"><label for="joinCode" class="muted">Class code from the board</label>
+          <input class="code" type="text" id="joinCode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(preset)}" required></div>
+        <div class="stack" style="gap:6px"><label for="joinName" class="muted">Your trader name</label>
+          <input type="text" id="joinName" maxlength="24" placeholder="e.g. Maya R." value="${esc(S.name)}" required></div>
+        <button class="btn primary" type="submit">Join the market</button>
+      </form>
+      <div class="panel stack"><span class="label">Instructor</span><h2>Run the game</h2>
+        <p class="muted">Your browser runs the market and records every trade, so keep this window open on the projector computer during class. No accounts or installs.</p>
+        <div class="row">
+          <button class="btn ${saved?'':'primary'}" type="button" id="newGame">Start a new game</button>
+          ${saved?`<button class="btn primary" type="button" id="resumeGame">Resume class ${esc(saved.code)}</button>`:''}
+        </div></div>
+    </div></div>`;
+  $('joinForm').onsubmit = e => {
+    e.preventDefault();
+    const code = cleanCode($('joinCode').value), name = $('joinName').value.trim();
+    if (code.length!==4) return toast('The class code has 4 letters.');
+    if (!name) return toast('Type a trader name.');
+    S.screenKey=''; startPlayer(code, name);
+  };
+  $('newGame').onclick = () => { S.screenKey=''; startHost(newCode(), null); };
+  if (saved) $('resumeGame').onclick = () => { S.screenKey=''; startHost(saved.code, saved); };
+}
+
+// ----- student -----
+function studentCtx(){
+  const st = S.state, key = myKey();
+  const pl = st.players?.[key];
+  const L = st.rid ? S.ledgers[st.rid] : null;
+  const comp = L ? computeLedger(L) : null;
+  return {st, key, pl, L, comp, myC: (L && L.roster[key]) || pl?.c};
+}
+function renderStudent(main){
+  if (!S.state){
+    S.screenKey='wait';
+    main.innerHTML = `<div class="panel stack" style="max-width:600px">
+      <h2>${S.notFound ? `No market open for class ${esc(S.code)} yet` : `Connecting to class ${esc(S.code)}…`}</h2>
+      <p class="muted">${S.notFound ? 'Check the code on the board. This page keeps trying, so it connects as soon as your instructor opens the market.' : 'This takes a few seconds.'}</p>
+      <div class="row"><button class="btn small" type="button" id="leave">Use a different code</button></div></div>`;
+    $('leave').onclick = leaveGame;
+    return;
+  }
+  const ctx = studentCtx(), {st, pl, L} = ctx;
+  if (!pl){
+    S.screenKey='wait';
+    main.innerHTML = `<div class="panel stack" style="max-width:560px"><h2>Checking you in…</h2><p class="muted">Your instructor's computer is assigning your country.</p></div>`;
+    return;
+  }
+  const phase = st.phase, round = st.round;
+  const sk = `s|${round}|${phase}|${st.rid}|${ctx.myC}|${!!L}`;
+  const fresh = sk !== S.screenKey;
+  S.screenKey = sk;
+  const passport = `<div class="passport c-${ctx.myC}"><div class="big">${esc(BY[ctx.myC]?.iso||'')}</div>
+    <div><span class="label">You trade for</span><h2>${esc(countryName(ctx.myC))}</h2><div class="muted">You produce ${esc(BY[ctx.myC]?.cheese)} · trader ${esc(pl.name)}</div></div></div>`;
+
+  if (round===0 || phase==='ready' || (round>=1 && round<=4 && !L)){
+    const r = ROUNDS[round];
+    main.innerHTML = `<div class="stack" style="max-width:760px">${passport}
+      <div class="panel stack">${r ? `<span class="label">Round ${round} · up next</span><h2>${esc(r.name)}</h2><p class="rule">${esc(r.rule)}</p>` : `<span class="label">Lobby</span><h2>You're in. The first round starts soon.</h2>`}
+      ${scoringNote(codesFor(round||1))}</div></div>`;
+    return;
+  }
+  if (round===5 || phase==='final') return renderStudentFinal(main, ctx, passport);
+  if (round===1) return renderAllocation(main, ctx, passport);
+  return renderTrading(main, ctx, passport, fresh);
+}
+function leaveGame(){
+  try { conn?.close(); } catch {}
+  conn = null; S.mode='landing'; S.state=null; S.ledgers={}; S.ops=[]; S.screenKey='';
+  store.del('cx-code'); store.del('cx-role');
+  history.replaceState(null,'',location.pathname); setNet(''); render();
+}
+function scoringNote(codes){
+  return `<p class="muted">Scoring: each cheese earns <b>5</b> points for your first card, <b>3</b> for the second, <b>1</b> for the third, and nothing after that. Best possible platter: <span class="num">${9*codes.length}</span> points (3 of each of ${codes.length} cheeses).</p>`;
+}
+function platterHTML(inv, codes, res){
+  return `<div class="platter">${codes.map(c=>{
+    const n = inv[c]||0; const tiers=[5,3,1];
+    const pipsHtml = tiers.map((t,i)=>`<span class="pip ${n>i?'on':''}" title="${t} points">${t}</span>`).join('') + (n>3?`<span class="pip extra num">+${n-3}</span>`:'');
+    const r = res?.[c] ? `<span class="muted" style="font-size:.78rem"> (${res[c]} on offer)</span>`:'';
+    return `<div class="prow c-${c}"><div>${chip(c)}${r}</div><div class="pips">${pipsHtml}</div><div class="count">${n}</div></div>`;
+  }).join('')}</div>`;
+}
+
+function renderAllocation(main, ctx, passport){
+  const {L, key, myC} = ctx; const codes = codesFor(1);
+  const saved = L.alloc?.[key] || {[myC]:TOKENS};
+  if (!S.allocDraft || S.allocDraft.rid!==L.rid) S.allocDraft = {rid:L.rid, c: Object.fromEntries(codes.map(c=>[c, saved[c]||0]))};
+  const d = S.allocDraft.c;
+  const cost = codes.reduce((s,c)=>s+(d[c]||0)*(c===myC?1:FOREIGN_COST),0);
+  const left = TOKENS - cost;
+  const open = tradingOpen();
+  const score = codes.reduce((s,c)=>s+pts(d[c]||0),0);
+  const synced = JSON.stringify(Object.fromEntries(codes.map(c=>[c,saved[c]||0]))) === JSON.stringify(Object.fromEntries(codes.map(c=>[c,d[c]||0])));
+  main.innerHTML = `<div class="grid g-side">
+    <div class="stack">${passport}
+      <div class="panel stack"><span class="label">Your platter</span>
+        <div class="row" style="align-items:baseline"><span class="score-big num">${score}</span><span class="score-of">/ ${9*codes.length} pts</span></div>
+        ${platterHTML(d, codes)}
+        <p class="muted" style="font-size:.85rem">${open ? (synced ? 'Saved with your instructor.' : 'Saving…') : 'The round is closed. This is your final platter.'}</p>
+      </div></div>
+    <div class="panel stack">
+      <div class="row" style="justify-content:space-between"><div><span class="label">Round 1 · No trade</span><h2>Produce your own platter</h2></div>${open?'<span class="pill live">Live</span>':'<span class="pill">Closed</span>'}</div>
+      <p class="rule">${esc(ROUNDS[1].rule)}</p>
+      <div class="row"><span class="label">Tokens left</span><span class="num" style="font-weight:600">${left} / ${TOKENS}</span></div>
+      <div class="tokens" aria-hidden="true">${Array.from({length:TOKENS},(_,i)=>`<span class="tok ${i<cost?'spent':''}"></span>`).join('')}</div>
+      <div>${codes.map(c=>{ const unit = c===myC?1:FOREIGN_COST; return `<div class="alloc-row c-${c}">
+        <div>${chip(c)} <span class="muted" style="font-size:.82rem">· ${unit} token${unit>1?'s':''} each${c===myC?' (yours)':''}</span></div>
+        <div class="stepper"><button type="button" data-al="${c}" data-d="-1" aria-label="Make one less ${esc(BY[c].cheese)}" ${!open||!d[c]?'disabled':''}>−</button>
+        <span class="count">${d[c]||0}</span>
+        <button type="button" data-al="${c}" data-d="1" aria-label="Make one more ${esc(BY[c].cheese)}" ${!open||left<unit?'disabled':''}>+</button></div>
+        <div class="num muted" style="font-size:.85rem;min-width:3.6em;text-align:right">+${pts(d[c]||0)} pts</div></div>`; }).join('')}</div>
+      ${scoringNote(codes)}
+    </div></div>`;
+  main.querySelectorAll('[data-al]').forEach(b => b.onclick = () => {
+    const c = b.dataset.al; d[c] = Math.max(0,(d[c]||0)+Number(b.dataset.d));
+    clearTimeout(S.allocTimer);
+    S.allocTimer = setTimeout(()=>sendOp({k:'l', c:{...d}}), 350);
+    render();
+  });
+}
+
+function renderTrading(main, ctx, passport, fresh){
+  const {L, key, comp, myC, st} = ctx;
+  const codes = comp.codes;
+  const inv = comp.inv[key] || Object.fromEntries(codes.map(c=>[c, c===myC?ENDOW:0]));
+  const avail = comp.avail[key] || inv;
+  const score = comp.score[key] ?? codes.reduce((s,c)=>s+pts(inv[c]),0);
+  const open = tradingOpen();
+  const names = st.players || {};
+  const pendingOps = S.ops.filter(o=>o.r===L.rid && o.k!=='l' && !L.ops?.[o.o]);
+  const pendingAcc = new Set(pendingOps.filter(o=>o.k==='a').map(o=>o.x));
+  const pendingCan = new Set(pendingOps.filter(o=>o.k==='c').map(o=>o.x));
+  const market = comp.offers.filter(o=>o.st==='open' && o.by!==key && L.roster[o.by]!==myC).sort((a,b)=>b.t-a.t);
+  const sameC = comp.offers.filter(o=>o.st==='open' && o.by!==key && L.roster[o.by]===myC).length;
+  const mine = comp.offers.filter(o=>o.st==='open' && o.by===key).sort((a,b)=>b.t-a.t);
+  const pendingOffers = pendingOps.filter(o=>o.k==='o');
+  const myTrades = comp.trades.filter(t=>t.by===key || t.to===key).sort((a,b)=>b.ft-a.ft).slice(0,6);
+  const missing = codes.filter(c=>inv[c]<3 && c!==myC);
+  const melt = L.melt||0;
+
+  if (fresh){
+    main.innerHTML = `<div class="grid g-side">
+      <div class="stack">${passport}
+        <div class="panel stack" id="platterBox"></div>
+        <div class="panel stack"><span class="label">Your trades</span><div class="feed" id="myFeed"></div></div>
+      </div>
+      <div class="stack">
+        <div class="panel stack">
+          <div class="row" style="justify-content:space-between"><div><span class="label">Round ${st.round} · ${esc(ROUNDS[st.round].tag)}</span><h2>${esc(ROUNDS[st.round].name)}</h2></div><span id="livePill"></span></div>
+          <p class="rule">${esc(ROUNDS[st.round].rule)}</p>
+          ${melt?`<div class="notice"><b>${esc(meltLabel(melt))}</b> (rounded). Ship 3 cards and <span class="num">${arrive(3,melt)}</span> arrive; ship 6 and <span class="num">${arrive(6,melt)}</span> arrive.</div>`:''}
+          <form class="composer" id="composer">
+            <span class="w">Offer</span>
+            <input type="number" id="giveQ" min="1" max="${MAXQ}" value="3" aria-label="How many cards you give">
+            <select id="giveC" aria-label="Cheese you give"></select>
+            <span class="w">for</span>
+            <input type="number" id="getQ" min="1" max="${MAXQ}" value="3" aria-label="How many cards you want">
+            <select id="getC" aria-label="Cheese you want"></select>
+            <button class="btn primary" type="submit" id="postBtn">Post offer</button>
+          </form>
+          <p class="muted" id="composeHint" style="font-size:.85rem"></p>
+        </div>
+        <div class="panel stack"><div class="row" style="justify-content:space-between"><h3>Market</h3><span class="muted" style="font-size:.85rem" id="mktCount"></span></div><div class="list" id="market"></div></div>
+        <div class="panel stack"><h3>Your open offers</h3><div class="list" id="mine"></div></div>
+      </div></div>`;
+    $('composer').onsubmit = e => {
+      e.preventDefault();
+      const gq = parseInt($('giveQ').value,10), wq = parseInt($('getQ').value,10), gc = $('giveC').value, wc = $('getC').value;
+      if (!validQ(gq) || !validQ(wq)) return toast(`Use whole numbers from 1 to ${MAXQ}.`);
+      if (!gc || !wc) return toast('Choose both cheeses.');
+      const c2 = computeLedger(S.ledgers[S.state.rid]);
+      const free = c2.avail[myKey()]?.[gc] ?? (gc===myC?ENDOW:0);
+      if (free < gq) return toast(`You only have ${free} ${BY[gc].cheese} free to offer.`);
+      sendOp({k:'o', g:[gc,gq], w:[wc,wq]});
+      toast('Offer posted.');
+    };
+    $('giveC').onchange = $('getC').onchange = $('getQ').oninput = () => S.hintFn && S.hintFn();
+  }
+  function updateHint(){
+    const wc=$('getC').value, wq=parseInt($('getQ').value,10)||0;
+    $('composeHint').textContent = melt && wc ? `If accepted, ${arrive(wq,melt)} of your ${wq} ${BY[wc]?.cheese||''} arrive after melting.` :
+      missing.length ? `Your platter still needs ${missing.map(c=>BY[c].cheese).join(', ')}.` : 'Your platter has 3 of every cheese. Nice.';
+  }
+  S.hintFn = updateHint;
+  const gSel=$('giveC'), wSel=$('getC');
+  const gv = gSel.value, wv = wSel.value;
+  const giveable = codes.filter(c=>avail[c]>0);
+  gSel.innerHTML = giveable.length ? giveable.map(c=>`<option value="${c}">${esc(BY[c].cheese)} (${avail[c]} free)</option>`).join('') : '<option value="">Nothing free</option>';
+  gSel.value = giveable.includes(gv) ? gv : (giveable.includes(myC) ? myC : giveable[0]||'');
+  const wantable = codes.filter(c=>c!==myC);
+  wSel.innerHTML = wantable.map(c=>`<option value="${c}">${esc(BY[c].cheese)}</option>`).join('');
+  wSel.value = wantable.includes(wv) ? wv : (missing[0] || wantable[0]);
+  $('postBtn').disabled = !open || !giveable.length;
+  ['giveQ','getQ','giveC','getC'].forEach(id => $(id).disabled = !open);
+  updateHint();
+  $('livePill').innerHTML = open ? '<span class="pill live">Trading open</span>' : '<span class="pill">Closed</span>';
+
+  $('platterBox').innerHTML = `<span class="label">Your platter</span>
+    <div class="row" style="align-items:baseline"><span class="score-big num">${score}</span><span class="score-of">/ ${9*codes.length} pts</span></div>
+    ${platterHTML(inv, codes, comp.res[key])}${open?'':'<p class="muted" style="font-size:.85rem">The round is closed. This is your final platter.</p>'}`;
+
+  $('mktCount').textContent = `${market.length} open${sameC?` · ${sameC} from your own country hidden`:''}`;
+  $('market').innerHTML = market.length ? market.map(o=>{
+    const need = o.get[1], have = avail[o.get[0]]||0;
+    const can = open && have>=need && !pendingAcc.has(o.id);
+    const recv = arrive(o.give[1], melt);
+    return `<div class="offer"><div><div class="terms"><span>You give</span>${chip(o.get[0], o.get[1])}<span class="arrow">⇄</span><span>you get</span>${chip(o.give[0], o.give[1])}
+      ${melt?`<span class="melt">${recv} arrive after melting</span>`:''}</div>
+      <div class="who">${esc(names[o.by]?.name||'Trader')} · ${esc(countryName(L.roster[o.by]))}</div></div>
+      <button class="btn small ${can?'primary':''}" type="button" data-acc="${esc(o.id)}" ${can?'':'disabled'}>${pendingAcc.has(o.id)?'Sending…':have<need?`Need ${need}`:'Accept'}</button></div>`;
+  }).join('') : `<div class="empty">No offers from other countries yet. Post one above: what you give, what you want.</div>`;
+  $('market').querySelectorAll('[data-acc]').forEach(b => b.onclick = () => { sendOp({k:'a', x:b.dataset.acc}); });
+
+  $('mine').innerHTML = (mine.length||pendingOffers.length) ? [
+    ...pendingOffers.map(o=>`<div class="offer"><div class="terms">${chip(o.g[0],o.g[1])}<span class="arrow">for</span>${chip(o.w[0],o.w[1])}</div><span class="pill warn">Posting…</span></div>`),
+    ...mine.map(o=>`<div class="offer"><div class="terms">${chip(o.give[0],o.give[1])}<span class="arrow">for</span>${chip(o.get[0],o.get[1])}</div>
+      <button class="btn small" type="button" data-can="${esc(o.id)}" ${pendingCan.has(o.id)||!open?'disabled':''}>${pendingCan.has(o.id)?'Withdrawing…':'Withdraw'}</button></div>`)].join('')
+    : `<div class="empty">You have no open offers.</div>`;
+  $('mine').querySelectorAll('[data-can]').forEach(b => b.onclick = () => sendOp({k:'c', x:b.dataset.can}));
+
+  $('myFeed').innerHTML = myTrades.length ? myTrades.map(t=>{
+    const iAmProp = t.by===key;
+    const gave = iAmProp ? t.give : t.get, got = iAmProp ? [t.get[0], t.pr] : [t.give[0], t.ar];
+    const other = iAmProp ? t.to : t.by;
+    return `<div>Gave ${chip(gave[0],gave[1])} got ${chip(got[0],got[1])} <span class="muted">with ${esc(countryName(L.roster[other]))}</span></div>`;
+  }).join('') : '<p class="muted">No trades yet.</p>';
+}
+
+function renderStudentFinal(main, ctx, passport){
+  const {st, key} = ctx;
+  const rows = [1,2,3,4].map(r=>{ const L = S.ledgers[st.runs?.[r]]; if (!L || !(key in L.roster)) return null;
+    const s = roundStats(L); return {r, mine: s.comp.score[key], avg: s.avg, max: s.max}; }).filter(Boolean);
+  S.screenKey = 's|final';
+  main.innerHTML = `<div class="stack" style="max-width:760px">${passport}
+    <div class="panel stack"><span class="label">Debrief</span><h2>How your platter changed</h2>
+    ${rows.length ? `<div class="scroll"><table><thead><tr><th>Round</th><th>Your score</th><th>Class average</th><th>Best possible</th></tr></thead><tbody>
+      ${rows.map(x=>`<tr><td>${x.r}. ${esc(ROUNDS[x.r].name)}</td><td>${x.mine}</td><td>${x.avg.toFixed(1)}</td><td>${x.max}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No rounds recorded for you.</p>'}
+    <p class="muted">Look at the jump from round 1 to round 2. Nobody produced more cheese, yet almost everyone ended up better off.</p></div></div>`;
+}
+
+// ----- instructor: control -----
+function joinUrl(){ return location.origin + location.pathname + '?code=' + S.code; }
+function stepState(n){ const r = S.state.round; return n===r ? 'cur' : n<r ? 'done' : ''; }
+function renderControl(main){
+  const st = S.state;
+  const L = st.rid ? S.ledgers[st.rid] : null;
+  const stats = L ? roundStats(L) : null;
+  const present = presentKeys();
+  const players = Object.entries(st.players||{});
+  const codes = codesFor(st.swissDone ? 4 : 1);
+  const byC = Object.fromEntries(codes.map(c=>[c,[]]));
+  for (const [k,p] of players) (byC[p.c] ||= []).push([k,p]);
+  const r = st.round, ph = st.phase;
+  S.screenKey = 'control';
+  let actions = '';
+  if (r===0) actions = `<button class="btn primary" data-act="open1">Open round 1</button>`;
+  else if (r>=1 && r<=4){
+    if (ph==='ready') actions = `<button class="btn primary" data-act="start">Start round ${r} · ${st.settings.minutes} min</button>`;
+    else if (ph==='live') actions = `<button class="btn primary" data-act="end">End round now</button><button class="btn" data-act="more">+1 minute</button>`;
+    else actions = `<button class="btn primary" data-act="next">${r<4?`Open round ${r+1}`:'Go to debrief'}</button><button class="btn" data-act="restart">Replay round ${r}</button>`;
+  } else actions = `<button class="btn" data-act="tab-debrief">Show debrief</button>`;
+  const local = location.protocol==='file:';
+
+  main.innerHTML = `<div class="stack">
+    <div class="panel stack">
+      <div class="steps">${[0,1,2,3,4,5].map(n=>`<div class="step ${stepState(n)}"><b>${n===0?'Lobby':n===5?'Debrief':`Round ${n}`}</b><small>${n===0?'Students join':n===5?'Compare rounds':esc(ROUNDS[n].name)}</small></div>`).join('')}</div>
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div class="stack" style="gap:6px;min-width:0;flex:1">
+          <span class="label">${r===0?'Lobby':r===5?'Debrief':`Round ${r} · ${ph==='ready'?'ready to start':ph==='live'?'trading':'closed'}`}</span>
+          <h2>${r===0?`${players.length} trader${players.length===1?'':'s'} joined`:r===5?'Talk through the results':esc(ROUNDS[r].name)}</h2>
+          <p class="rule muted">${r===0?'Put the Projector tab on screen so students can see the class code.':r===5?'Open the Debrief tab on the projector.':esc(ROUNDS[r].rule)}</p>
+        </div>
+        <div class="row">${actions}</div>
+      </div>
+      ${S.confirm==='reset'?`<div class="confirm"><b>Erase all players and results and start a new game?</b><button class="btn small primary" data-act="reset-yes">Reset game</button><button class="btn small" data-act="reset-no">Keep playing</button></div>`:''}
+      ${stats?`<div class="kpis">
+        <div class="kpi"><span class="label">Traders</span><div class="v">${stats.players}</div></div>
+        <div class="kpi"><span class="label">Avg platter</span><div class="v">${stats.avg.toFixed(1)}<span class="muted" style="font-size:.9rem"> / ${stats.max}</span></div></div>
+        <div class="kpi"><span class="label">Trades</span><div class="v">${stats.trades}</div></div>
+        <div class="kpi"><span class="label">Cards melted</span><div class="v">${stats.melted}</div></div>
+      </div>`:''}
+    </div>
+    <div class="grid g-2">
+      <div class="panel stack"><span class="label">Class code</span>
+        <div class="codebox">${esc(S.code)}</div>
+        <p class="muted" style="font-size:.9rem">${local ? 'Students open the game page, choose "Join your class" and type this code.' : `Students go to <b style="word-break:break-all">${esc(joinUrl())}</b> or open the page and type the code.`}</p>
+        <p class="muted" style="font-size:.85rem">${S.hostReady ? `${present.size} student${present.size===1?'':'s'} connected now.` : 'Opening the market…'} Keep this window open: it records every trade, and the game is saved in this browser if you reload.</p>
+      </div>
+      <div class="panel stack"><h3>Settings</h3>
+        <div class="row"><label for="setMin" class="muted">Round length</label>
+          <select id="setMin">${[2,3,4,5,6,8,10].map(m=>`<option value="${m}" ${st.settings?.minutes===m?'selected':''}>${m} minutes</option>`).join('')}</select></div>
+        <div class="row"><label for="setMelt" class="muted">Round 3 melting</label>
+          <select id="setMelt"><option value="0.3333333333" ${st.settings?.melt<0.5?'selected':''}>About 1 in 3 cards</option><option value="0.5" ${st.settings?.melt>=0.5?'selected':''}>About half</option></select></div>
+        <p class="muted" style="font-size:.85rem">Melting is fixed when round 3 starts.</p>
+        <div class="row"><button class="btn small" data-act="reset">Reset game</button></div>
+        <p class="muted" style="font-size:.85rem">To rehearse alone, open this page in two other tabs or browsers and join with the class code.</p>
+      </div>
+    </div>
+    <div class="panel stack"><div class="row" style="justify-content:space-between"><h3>Countries</h3><span class="muted" style="font-size:.85rem">${present.size} online now</span></div>
+      <div class="roster">${Object.keys(byC).map(c=>`<div><div class="chip c-${c}"><span class="dot"></span>${esc(countryName(c))} <span class="muted num">(${byC[c].length})</span></div>
+        <ul>${byC[c].sort((a,b)=>a[1].j-b[1].j).map(([k,p])=>`<li><span><span class="on-dot ${present.has(k)?'':'off'}"></span>${esc(p.name)}</span>${stats&&k in (L.roster||{})?`<span class="num muted">${stats.comp.score[k]} pts</span>`:''}</li>`).join('') || '<li class="muted">Nobody yet</li>'}</ul></div>`).join('')}</div>
+    </div></div>`;
+  main.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
+  $('setMin').onchange = e => host.setting('minutes', Number(e.target.value));
+  $('setMelt').onchange = e => host.setting('melt', Number(e.target.value)>=0.5 ? 0.5 : 1/3);
+}
+function act(a){
+  if (a==='tab-debrief'){ setView('debrief'); return; }
+  const r = H.state.round;
+  if (a==='open1') host.openRound(1);
+  else if (a==='start') host.startRound();
+  else if (a==='end') host.endRound();
+  else if (a==='more') host.addTime();
+  else if (a==='next') host.openRound(r<4 ? r+1 : 5);
+  else if (a==='restart') host.openRound(r);
+  else if (a==='reset'){ S.confirm='reset'; render(); return; }
+  else if (a==='reset-no'){ S.confirm=null; render(); return; }
+  else if (a==='reset-yes'){ S.confirm=null; host.reset(); }
+  render();
+}
+
+// ----- instructor: projector -----
+function renderProjector(main){
+  const st = S.state; const r = st.round;
+  const L = st.rid ? S.ledgers[st.rid] : null;
+  const stats = L ? roundStats(L) : null;
+  S.screenKey = 'proj';
+  const local = location.protocol==='file:';
+  const codeStrip = `<div class="panel row" style="justify-content:space-between"><div><span class="label">Join with class code</span><div class="codebox">${esc(S.code)}</div></div>
+    ${local?'':`<p class="muted" style="max-width:36ch;word-break:break-all">${esc(joinUrl())}</p>`}</div>`;
+  if (!stats){
+    const n = Object.keys(st.players||{}).length;
+    main.innerHTML = `<div class="stack"><div class="proj-head"><div><span class="label">${r===0?'Lobby':r===5?'Debrief':`Round ${r} · up next`}</span>
+      <h1>${r===0?'Join the Cheese Exchange':r===5?'Results':esc(ROUNDS[r].name)}</h1></div><div class="proj-clock" id="projClock"></div></div>
+      ${r<5?codeStrip:''}
+      <div class="panel stack"><p class="rule" style="font-size:1.2rem">${r===0?`${n} trader${n===1?' has':'s have'} joined.`:r===5?'Switch to the Debrief tab.':esc(ROUNDS[r].rule)}</p>
+      ${scoringNote(codesFor(r||1))}</div></div>`;
+    return;
+  }
+  const names = st.players||{};
+  const top = Object.keys(L.roster).map(k=>[k, stats.comp.score[k]]).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const feed = stats.comp.trades.slice().sort((a,b)=>b.ft-a.ft).slice(0,7);
+  const ticks = [0.25,0.5,0.75].map(f=>`<span class="tick" style="left:${f*100}%"></span>`).join('');
+  main.innerHTML = `<div class="stack">
+    <div class="proj-head"><div><span class="label">Round ${r} · ${esc(ROUNDS[r].tag)} · class ${esc(S.code)}</span><h1>${esc(ROUNDS[r].name)}</h1></div>
+      <div style="text-align:right"><div class="proj-clock" id="projClock">${st.phase==='live'?fmt(remaining()):'Closed'}</div><div class="muted">${stats.trades} trades · avg platter ${stats.avg.toFixed(1)} / ${stats.max}</div></div></div>
+    ${L.melt?`<div class="notice"><b>${esc(meltLabel(L.melt))}.</b> ${stats.melted} cards melted so far.</div>`:''}
+    <div class="grid g-proj">
+      <div class="panel stack"><span class="label">Average platter by country (max ${stats.max})</span>
+        <div class="bars">${stats.comp.codes.map(c=>{ const v = stats.ctry[c]; const w = v==null?0:v/stats.max*100;
+          return `<div class="barrow c-${c}"><div class="chip"><span class="dot"></span>${esc(countryName(c))}</div><div class="track">${ticks}<div class="fill" style="width:${w}%"></div></div><div class="barval">${v==null?'–':v.toFixed(1)}</div></div>`; }).join('')}</div></div>
+      <div class="stack">
+        <div class="panel stack"><span class="label">Top platters</span><div class="feed">${top.map(([k,s],i)=>`<div><span class="num muted">${i+1}.</span> <b>${esc(names[k]?.name||'Trader')}</b> <span class="muted">${esc(countryName(L.roster[k]))}</span> <span class="num" style="margin-left:auto">${s}</span></div>`).join('')||'<p class="muted">No traders yet.</p>'}</div></div>
+        <div class="panel stack"><span class="label">Latest trades</span><div class="feed">${feed.length?feed.map(t=>`<div>${esc(countryName(L.roster[t.by]))} ${chip(t.give[0],t.give[1])} <span class="arrow">⇄</span> ${chip(t.get[0],t.get[1])} ${esc(countryName(L.roster[t.to]))}</div>`).join(''):`<p class="muted">${r===1?'No trading in this round. Borders are closed.':'Waiting for the first trade.'}</p>`}</div></div>
+      </div></div></div>`;
+}
+
+// ----- instructor: debrief -----
+function renderDebrief(main){
+  const st = S.state;
+  const rows = [1,2,3,4].map(r=>{ const L = S.ledgers[st.runs?.[r]]; return L ? {r, L, s: roundStats(L)} : null; }).filter(Boolean);
+  if (!S.debriefRound || !rows.find(x=>x.r===S.debriefRound)) S.debriefRound = (rows.find(x=>x.r!==1)||rows[0])?.r;
+  S.screenKey = 'debrief';
+  if (!rows.length){ main.innerHTML = `<div class="panel stack"><h2>No rounds played yet</h2><p class="muted">Results appear here round by round as you play.</p></div>`; return; }
+  const sel = rows.find(x=>x.r===S.debriefRound);
+  const maxAll = 45;
+  const chartH = 200, barW = 64, gap = 36, padL = 44, padB = 34;
+  const W = padL + rows.length*(barW+gap) + 10;
+  const y = v => chartH - v/maxAll*chartH;
+  const svg = `<svg viewBox="0 0 ${W} ${chartH+padB+12}" width="100%" style="max-width:${W*1.6}px" role="img" aria-label="Average platter score by round">
+    ${[0,15,30,45].map(v=>`<line x1="${padL}" x2="${W}" y1="${y(v)+6}" y2="${y(v)+6}" stroke="var(--line)"/><text x="${padL-8}" y="${y(v)+10}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${v}</text>`).join('')}
+    ${rows.map((x,i)=>{ const bx = padL + 18 + i*(barW+gap); const h = x.s.avg/maxAll*chartH; const mx = y(x.s.max)+6;
+      return `<rect x="${bx}" y="${y(x.s.avg)+6}" width="${barW}" height="${h}" rx="4" fill="var(--accent)"/>
+      <line x1="${bx-6}" x2="${bx+barW+6}" y1="${mx}" y2="${mx}" stroke="var(--ink)" stroke-dasharray="4 3"/>
+      <text x="${bx+barW/2}" y="${y(x.s.avg)}" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink)" font-family="IBM Plex Mono, monospace">${x.s.avg.toFixed(1)}</text>
+      <text x="${bx+barW/2}" y="${chartH+26}" text-anchor="middle" font-size="12" fill="var(--muted)" font-family="Figtree, sans-serif">R${x.r} ${['','No trade','Free trade','Costs','Swiss'][x.r]}</text>`; }).join('')}
+  </svg>`;
+  const mcodes = sel.s.comp.codes;
+  const mmax = Math.max(1, ...mcodes.flatMap(a=>mcodes.map(b=>sel.s.matrix[a]?.[b]||0)));
+  main.innerHTML = `<div class="stack">
+    <div><span class="label">Debrief</span><h2 style="font-size:2rem">What trade did to our platters</h2></div>
+    <div class="grid g-2">
+      <div class="panel stack"><span class="label">Average platter by round</span>${svg}
+        <p class="muted" style="font-size:.85rem">Dashed line: best possible platter that round (36 with four cheeses, 45 with five).</p></div>
+      <div class="panel stack"><span class="label">Round by round</span><div class="scroll"><table>
+        <thead><tr><th>Round</th><th>Traders</th><th>Avg</th><th>Trades</th><th>Shipped</th><th>Melted</th></tr></thead>
+        <tbody>${rows.map(x=>`<tr><td>${x.r}. ${esc(ROUNDS[x.r].name)}</td><td>${x.s.players}</td><td>${x.s.avg.toFixed(1)}</td><td>${x.s.trades}</td><td>${x.s.shipped}</td><td>${x.s.melted}</td></tr>`).join('')}</tbody></table></div></div>
+    </div>
+    <div class="panel stack">
+      <div class="row" style="justify-content:space-between"><span class="label">Who shipped cheese to whom (cards sent)</span>
+        <div class="row"><label for="dbR" class="muted">Round</label><select id="dbR">${rows.map(x=>`<option value="${x.r}" ${x.r===sel.r?'selected':''}>${x.r}. ${esc(ROUNDS[x.r].name)}</option>`).join('')}</select></div></div>
+      <div class="scroll"><table><thead><tr><th>From \\ To</th>${mcodes.map(c=>`<th>${esc(countryName(c))}</th>`).join('')}</tr></thead>
+        <tbody>${mcodes.map(a=>`<tr><td>${chip(a)} <span class="muted">${esc(countryName(a))}</span></td>${mcodes.map(b=>{ const v = sel.s.matrix[a]?.[b]||0;
+          return `<td>${a===b?'<span class="muted">·</span>':`<span class="heat" style="background:color-mix(in srgb,var(--accent) ${Math.round(v/mmax*55)}%,transparent)">${v}</span>`}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="font-size:.85rem">Each country both exports and imports cheese, so the same industry shows up on both sides of the table. That two-way flow is intra-industry trade.</p>
+    </div>
+    <div class="panel stack"><span class="label">Discussion</span><ol class="qs">
+      <li>Nobody made more cheese in round 2 than in round 1. Why did almost everyone end up with a higher score?</li>
+      <li>France could make Gouda in round 1. Why was trading Brie for Gouda better than producing it?</li>
+      <li>How did melting change how much people traded, and who lost the most from it?</li>
+      <li>Switzerland's arrival changed nothing about anyone else's production. Who gained, and why?</li>
+    </ol></div></div>`;
+  $('dbR').onchange = e => { S.debriefRound = Number(e.target.value); render(); };
+}
+
+function setView(v){ S.view = v; store.set('cx-view', v); render(); }
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) setView(b.dataset.tab); });
+window.addEventListener('beforeunload', e => { if (S.mode==='host' && H.state?.phase==='live'){ e.preventDefault(); e.returnValue=''; } });
+
+// ---------- boot ----------
+function boot(){
+  if (typeof Peer === 'undefined'){
+    $('main').innerHTML = `<div class="panel stack" style="max-width:640px"><h2>The game couldn't load its connection library</h2><p>Check the internet connection and reload. Some school networks block it; a phone hotspot usually works.</p></div>`;
+    return;
+  }
+  const qs = new URLSearchParams(location.search);
+  const role = store.get('cx-role');
+  if (location.hash==='#host' && role==='host'){
+    try { const saved = JSON.parse(store.get('cx-host')||'null'); if (saved?.state){ startHost(saved.code, saved); return; } } catch {}
+  }
+  const code = cleanCode(qs.get('code'));
+  if (role==='player' && S.name && code && code===cleanCode(store.get('cx-code'))){ startPlayer(code, S.name); return; }
+  render();
+}
+boot();
+})();
+</script>
+</body>
+</html>
