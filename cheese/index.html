@@ -168,6 +168,8 @@ td:first-child{font-family:var(--f-body)}
 .notice{padding:12px 14px;border-radius:8px;background:var(--warn-soft);color:var(--ink);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);font-size:.92rem}
 .rule{font-size:1rem;max-width:62ch}
 ol.qs{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;max-width:70ch}
+.qr{background:#fff;padding:10px;border-radius:8px;width:max-content;max-width:100%}
+.qr img,.qr canvas{display:block;max-width:100%;height:auto}
 .codebox{font:800 clamp(2.6rem,9vw,5.5rem)/1 var(--f-mono);letter-spacing:.12em;color:var(--accent)}
 .landing{max-width:860px}
 .choice{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
@@ -202,7 +204,26 @@ input.code{font:700 1.4rem var(--f-mono);letter-spacing:.2em;text-transform:uppe
 </main>
 <div class="toast" id="toast" hidden></div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+// ===== Paste your Firebase web config here (Project settings → Your apps) =====
+window.FIREBASE_CONFIG = {
+  "apiKey": "AIzaSyDv7f3pMPv6ShB08_IugCMmbEUvo16xANg",
+  "authDomain": "cheese-exchange.firebaseapp.com",
+  "databaseURL": "https://cheese-exchange-default-rtdb.firebaseio.com",
+  "projectId": "cheese-exchange",
+  "storageBucket": "cheese-exchange.firebasestorage.app",
+  "messagingSenderId": "829186052806",
+  "appId": "1:829186052806:web:8fff28d4fe768175397dc7"
+};
+// Which page this is: "student" (cheese/index.html) or "host" (the instructor page).
+window.CX_ROLE = "student";
+// Address of the student page, relative to this page.
+window.CX_STUDENT_PATH = "./";
+</script>
 <script>
 (() => {
 // ---------- game constants ----------
@@ -215,7 +236,6 @@ const CHEESES = [
 ];
 const BY = Object.fromEntries(CHEESES.map(x => [x.c, x]));
 const TOKENS = 12, ENDOW = 12, FOREIGN_COST = 3, MAXQ = 12;
-const PEER_PREFIX = 'cheese-exchange-v1-';
 const ROUNDS = {
   1:{name:'No trade', tag:'Autarky', rule:`Borders are closed. Spend ${TOKENS} production tokens: your own cheese costs 1 token per card, any foreign cheese costs ${FOREIGN_COST}.`},
   2:{name:'Free trade', tag:'Open markets', rule:`You start with ${ENDOW} cards of your own cheese. Post offers and accept offers from other countries to build a varied platter.`},
@@ -225,6 +245,8 @@ const ROUNDS = {
 const pts = n => (n>=1?5:0)+(n>=2?3:0)+(n>=3?1:0);
 const codesFor = round => round>=4 ? CHEESES.map(x=>x.c) : CHEESES.slice(0,4).map(x=>x.c);
 const arrive = (q,f) => q - Math.round(q*f + 1e-9);
+let CLOCK_OFF = 0;
+const now = () => Date.now() + CLOCK_OFF;
 const rid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -232,6 +254,8 @@ const chip = (c, n) => `<span class="chip c-${c}"><span class="dot"></span>${n!=
 const countryName = c => BY[c]?.country || '—';
 const meltLabel = f => f>=0.5 ? 'About half of each shipment melts' : f>0 ? 'About 1 in 3 cards of each shipment melts' : 'No shipping losses';
 const newCode = () => Array.from({length:4},()=> 'ABCDEFGHJKMNPQRSTUVWXYZ'[Math.floor(Math.random()*23)]).join('');
+const IS_HOST = window.CX_ROLE === 'host';
+const cleanId = s => String(s||'').replace(/[^a-z0-9]/gi,'').slice(0,24);
 const cleanCode = s => String(s||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
 
 function computeLedger(L){
@@ -299,8 +323,8 @@ const S = {
   screenKey:'', allocDraft:null, allocTimer:null, hintFn:null, debriefRound:null,
 };
 store.set('cx-cid', S.cid);
-const H = {state:null, ledger:null, ledgers:{}, peer:null, clients:{}};
-let conn = null, playerPeer = null;
+const H = {state:null, ledger:null, ledgers:{}, presence:{}, sent:{}, unsub:[]};
+let DB = null, playerUnsub = [];
 
 const $ = id => document.getElementById(id);
 let toastT;
@@ -326,20 +350,52 @@ function commit(sDirty, lDirty){
   clearTimeout(bcastT); bcastT = setTimeout(broadcast, 120);
   render();
 }
-function snapshotFor(){
-  const st = H.state;
-  const msg = {t:'state', state: st, ledgers:{}};
-  if (st.rid && H.ledgers[st.rid]) msg.ledgers[st.rid] = H.ledgers[st.rid];
-  if (st.round===5) for (const r of Object.values(st.runs||{})) if (H.ledgers[r]) msg.ledgers[r] = H.ledgers[r];
-  return msg;
+// ---- writing the market to the shared database (only changed fields travel) ----
+function flatten(obj, prefix, depth, out){
+  for (const [k,v] of Object.entries(obj||{})){
+    const path = prefix ? prefix+'/'+k : k;
+    if (v===null || v===undefined) continue;
+    if (typeof v==='object' && !Array.isArray(v) && !Object.keys(v).length) continue;
+    if (typeof v==='object' && !Array.isArray(v) && depth>1) flatten(v, path, depth-1, out);
+    else out[path] = JSON.stringify(v);
+  }
+  return out;
 }
-function broadcast(){
-  if (!H.state) return;
-  const msg = snapshotFor();
-  for (const c of Object.values(H.clients)) if (c.conn?.open) { try { c.conn.send(msg); } catch {} }
+function hostTree(){
+  const ledgers = {};
+  for (const [r,L] of Object.entries(H.ledgers||{})){ const {ops, ...rest} = L; ledgers[r] = rest; }
+  const results = {};
+  const L = H.state?.rid ? H.ledgers[H.state.rid] : null;
+  if (L){
+    for (const p of S.peers){
+      const ops = Array.isArray(p.presence?.ops) ? p.presence.ops : [];
+      for (const op of ops){ if (op && op.r===L.rid && L.ops?.[op.o]) (results[p.key] ||= {})[op.o] = L.ops[op.o]; }
+    }
+  }
+  return {state:H.state, ledgers, results};
+}
+let writing = false, writeAgain = false;
+async function broadcast(){
+  if (!DB || !H.state || !S.isActiveHost) return;
+  if (writing){ writeAgain = true; return; }
+  writing = true;
+  try {
+    const flat = flatten(hostTree(), '', 4, {});
+    const upd = {};
+    for (const [k,v] of Object.entries(flat)) if (H.sent[k] !== v) upd[k] = JSON.parse(v);
+    const keys = Object.keys(flat);
+    for (const k of Object.keys(H.sent)) if (!(k in flat) && !keys.some(w => w.startsWith(k+'/') || k.startsWith(w+'/'))) upd[k] = null;
+    if (Object.keys(upd).length){
+      await DB.ref('games/'+S.code).update(upd);
+      H.sent = flat;
+    }
+  } catch(e){ console.warn('write failed', e); setTimeout(broadcast, 1500); }
+  writing = false;
+  if (writeAgain){ writeAgain = false; broadcast(); }
 }
 function rebuildPeers(){
-  S.peers = Object.values(H.clients).filter(c=>c.conn?.open && c.presence).map(c=>({presence:c.presence, key:'c-'+c.cid}));
+  S.peers = Object.values(H.presence||{}).filter(p=>p && p.on && p.role==='player' && p.cid)
+    .map(p=>({presence:p, key:'c-'+cleanId(p.cid)}));
 }
 function peerKey(peer){
   const p = peer.presence || {};
@@ -387,7 +443,7 @@ function hostProcess(){
     else if (pl.name !== name){ pl.name = name; sDirty = true; }
     if (!inRound) continue;
     if (!(key in L.roster)){ L.roster[key] = pl.c; lDirty = true; }
-    if (st.phase!=='live' || Date.now() > st.endsAt) continue;
+    if (st.phase!=='live' || now() > st.endsAt) continue;
     const ops = Array.isArray(p.ops) ? p.ops.slice(-20) : [];
     for (const op of ops){
       if (!op || op.r !== st.rid || typeof op.o!=='string' || op.o.length>24) continue;
@@ -450,12 +506,12 @@ const host = {
     if (r===4 && !st.swissDone) assignSwiss();
     const id = rid();
     st.rid = id; st.runs = {...st.runs, [r]: id}; st.phase = 'live';
-    st.endsAt = Date.now() + st.settings.minutes*60000;
+    st.endsAt = now() + st.settings.minutes*60000;
     H.ledger = {rid:id, round:r, melt: r===3 ? st.settings.melt : 0, roster:{}, alloc:{}, offers:{}, ops:{}, t:Date.now()};
     for (const k of presentKeys()) H.ledger.roster[k] = st.players[k].c;
     commit(true,true); hostProcess();
   },
-  endRound(){ H.state.phase = 'closed'; H.state.endsAt = Math.min(H.state.endsAt, Date.now()); commit(true,false); },
+  endRound(){ H.state.phase = 'closed'; H.state.endsAt = Math.min(H.state.endsAt, now()); commit(true,false); },
   addTime(){ if (H.state.phase!=='live') return; H.state.endsAt += 60000; commit(true,false); },
   reset(){ H.state = freshState(); H.ledger = null; H.ledgers = {}; commit(true,false); hostProcess(); },
   setting(k,v){ H.state.settings[k] = v; commit(true,false); },
@@ -471,101 +527,128 @@ function startHost(code, restore){
   saveHost();
   store.set('cx-role','host');
   history.replaceState(null, '', location.pathname + '#host');
-  openHostPeer(0);
+  openHostDb(!restore);
   render();
 }
-function openHostPeer(attempt){
+async function openHostDb(isNew){
   setNet('Opening market…');
-  if (H.peer){ try { H.peer.destroy(); } catch {} }
-  const peer = H.peer = new Peer(PEER_PREFIX + S.code, {debug:0});
-  peer.on('open', () => { S.hostReady = true; setNet('Market open'); render(); });
-  peer.on('connection', c => {
-    c.on('open', () => {
-      c.on('data', d => {
-        if (!d || typeof d!=='object' || d.t!=='presence' || !d.p) return;
-        const cid = String(d.p.cid||'').replace(/[^a-z0-9]/gi,'').slice(0,24);
-        if (!cid) return;
-        const prev = H.clients[cid];
-        if (prev && prev.conn !== c && prev.conn?.open) { try { prev.conn.close(); } catch {} }
-        H.clients[cid] = {cid, conn:c, presence:d.p};
-        c._cid = cid;
-        rebuildPeers(); scheduleProcess();
-        try { c.send(snapshotFor()); } catch {}
-      });
-    });
-    c.on('close', () => { if (c._cid && H.clients[c._cid]?.conn===c) { rebuildPeers(); render(); } });
-  });
-  peer.on('disconnected', () => { setNet('Reconnecting…', true); setTimeout(()=>{ try { peer.reconnect(); } catch {} }, 1500); });
-  peer.on('error', err => {
-    if (err.type==='unavailable-id'){
-      // the previous session for this code is still closing; retry for ~1 minute
-      if (attempt < 12){ setNet('Reclaiming class code…'); setTimeout(()=>openHostPeer(attempt+1), 5000); }
-      else { setNet('Code in use', true); toast('That class code is already running in another window. Close it or start a new game.'); }
-      return;
+  H.unsub.forEach(f=>f()); H.unsub = [];
+  const tab = S.tabId ||= rid();
+  try {
+    if (isNew){
+      for (let i=0;i<8;i++){
+        const m = await DB.ref('games/'+S.code+'/meta').get();
+        if (!m.exists()) break;
+        S.code = newCode(); saveHost();
+      }
+      H.sent = {};
+      await DB.ref('games/'+S.code).set({meta:{tab, owner:S.uid, t:firebase.database.ServerValue.TIMESTAMP}});
+    } else {
+      await DB.ref('games/'+S.code+'/meta').update({tab, t:firebase.database.ServerValue.TIMESTAMP});
+      H.sent = {};
+      // clear whatever an earlier window left, then write this window's copy in full
+      const snap = await DB.ref('games/'+S.code).get();
+      const old = snap.val()||{};
+      const clear = {}; for (const k of ['state','ledgers','results']) if (old[k]) clear[k]=null;
+      if (Object.keys(clear).length) await DB.ref('games/'+S.code).update(clear);
     }
-    if (err.type==='network' || err.type==='server-error' || err.type==='socket-error' || err.type==='socket-closed'){
-      setNet('Offline · retrying', true); setTimeout(()=>openHostPeer(attempt), 4000); return;
+  } catch(e){
+    console.warn(e);
+    if (String(e?.code||e?.message||'').toUpperCase().includes('PERMISSION')){
+      S.mode='landing'; S.screenKey=''; setNet('');
+      toast(`Class ${S.code} was started in a different browser, so it can't be controlled from here. Start a new game.`);
+      history.replaceState(null,'',location.pathname); render(); return;
     }
-    console.warn('peer error', err.type, err);
+    setNet('Offline · retrying', true);
+    toast('Could not reach the game server. Check the internet connection.');
+    setTimeout(()=>openHostDb(isNew), 4000); return;
+  }
+  S.isActiveHost = true; S.hostReady = true; setNet('Market open'); render();
+  const metaRef = DB.ref('games/'+S.code+'/meta/tab');
+  const onMeta = metaRef.on('value', s => {
+    const mine = s.val()===tab;
+    if (!mine && S.isActiveHost){ S.isActiveHost = false; setNet('Open in another window', true);
+      toast('This game was opened in another window. Use that window, or reload this one to take it back.'); render(); }
   });
+  H.unsub.push(()=>metaRef.off('value', onMeta));
+  const presRef = DB.ref('games/'+S.code+'/presence');
+  const onPres = presRef.on('value', s => { H.presence = s.val()||{}; rebuildPeers(); scheduleProcess(); render(); });
+  H.unsub.push(()=>presRef.off('value', onPres));
+  const conRef = DB.ref('.info/connected');
+  const onCon = conRef.on('value', s => { if (S.mode!=='host') return; setNet(s.val() ? (S.isActiveHost?'Market open':'Open in another window') : 'Offline · reconnecting', !s.val() || !S.isActiveHost); });
+  H.unsub.push(()=>conRef.off('value', onCon));
+  broadcast();
 }
 
 // =====================================================================
 // PLAYER: a student's browser connects to the instructor's market
 // =====================================================================
 function startPlayer(code, name){
+  S.joinedAt = now(); setTimeout(()=>{ if (S.mode==='player' && !S.state) render(); }, 10500);
   S.mode = 'player'; S.code = code; S.name = name.trim().slice(0,24);
   store.set('cx-name', S.name); store.set('cx-code', code); store.set('cx-role','player');
   history.replaceState(null, '', location.pathname + '?code=' + code);
   connectPlayer();
   render();
 }
-let reconnectT = null;
+function normLedger(L){ if (!L) return L; L.roster ||= {}; L.alloc ||= {}; L.offers ||= {}; for (const o of Object.values(L.offers)){ o.give ||= []; o.get ||= []; } return L; }
 function connectPlayer(){
-  clearTimeout(reconnectT);
+  playerUnsub.forEach(f=>f()); playerUnsub = [];
   setNet('Connecting…');
-  if (!playerPeer || playerPeer.destroyed){
-    playerPeer = new Peer(undefined, {debug:0});
-    playerPeer.on('open', () => dial());
-    playerPeer.on('disconnected', () => { setTimeout(()=>{ try { playerPeer.reconnect(); } catch {} }, 1500); });
-    playerPeer.on('error', err => {
-      if (err.type==='peer-unavailable'){ setNet('Market not found', true); S.notFound = true; render(); reconnectT = setTimeout(dial, 4000); return; }
-      if (['network','server-error','socket-error','socket-closed'].includes(err.type)){ setNet('Offline · retrying', true); reconnectT = setTimeout(connectPlayer, 4000); return; }
-      console.warn('peer error', err.type, err);
-    });
-  } else if (playerPeer.open) dial();
-}
-function dial(){
-  clearTimeout(reconnectT);
-  if (conn && conn.open) return;
-  const c = conn = playerPeer.connect(PEER_PREFIX + S.code, {reliable:true});
-  const giveUp = setTimeout(() => { if (!c.open){ try { c.close(); } catch {}; reconnectT = setTimeout(dial, 2500); } }, 9000);
-  c.on('open', () => {
-    clearTimeout(giveUp); S.notFound = false; setNet('Connected'); pushPresence();
+  const base = 'games/'+S.code;
+  const presRef = DB.ref(base+'/presence/'+S.cid);
+  const conRef = DB.ref('.info/connected');
+  const onCon = conRef.on('value', s => {
+    S.online = !!s.val();
+    if (S.online){
+      presRef.onDisconnect().update({on:false});
+      pushPresence(); setNet(S.state ? 'Connected' : 'Connecting…');
+    } else setNet('Offline · reconnecting', true);
   });
-  c.on('data', d => {
-    if (!d || d.t!=='state') return;
-    S.state = d.state;
-    S.ledgers = {...S.ledgers, ...d.ledgers};
-    noticeResults(); render();
+  playerUnsub.push(()=>conRef.off('value', onCon));
+  let results = {};
+  const merge = () => {
+    if (S.state?.rid && S.ledgers[S.state.rid]) S.ledgers[S.state.rid] = {...S.ledgers[S.state.rid], ops: results};
+  };
+  const stRef = DB.ref(base+'/state');
+  const onSt = stRef.on('value', s => {
+    const st = s.val();
+    if (!st){ S.state = null; S.notFound = true; setNet('Market not found', true); render(); return; }
+    st.players ||= {}; st.runs ||= {}; st.settings ||= {minutes:5, melt:1/3}; st.rid ||= null;
+    S.state = st; S.notFound = false; if (S.online) setNet('Connected');
+    merge(); noticeResults(); render();
+  }, e => { console.warn(e); setNet('Cannot read game', true); });
+  playerUnsub.push(()=>stRef.off('value', onSt));
+  const lRef = DB.ref(base+'/ledgers');
+  const onL = lRef.on('value', s => {
+    const all = s.val()||{}; const next = {};
+    for (const [r,L] of Object.entries(all)) next[r] = normLedger(L);
+    S.ledgers = next; merge(); noticeResults(); render();
   });
-  c.on('close', () => { clearTimeout(giveUp); if (conn===c){ setNet('Reconnecting…', true); reconnectT = setTimeout(dial, 2000); } });
-  c.on('error', () => {});
+  playerUnsub.push(()=>lRef.off('value', onL));
+  const rRef = DB.ref(base+'/results/'+myKey());
+  const onR = rRef.on('value', s => { results = s.val()||{}; merge(); noticeResults(); render(); });
+  playerUnsub.push(()=>rRef.off('value', onR));
 }
+let presT = null;
 function pushPresence(){
-  const p = {role:'player', name:S.name, cid:S.cid, ops:S.ops.slice(-16)};
-  if (conn?.open){ try { conn.send({t:'presence', p}); } catch { toast('Could not reach the class. Check your connection.'); } }
+  clearTimeout(presT);
+  presT = setTimeout(() => {
+    if (!DB || S.mode!=='player') return;
+    DB.ref('games/'+S.code+'/presence/'+S.cid).set({role:'player', name:S.name, cid:S.cid, ops:S.ops.slice(-16), on:true, t:firebase.database.ServerValue.TIMESTAMP})
+      .catch(e => { console.warn(e); toast('Could not reach the class. Check your connection.'); });
+  }, 60);
 }
 function sendOp(op){
   if (!S.state?.rid) return;
   op.o = rid(); op.r = S.state.rid;
   if (op.k==='l') S.ops = S.ops.filter(x=>x.k!=='l');
   S.ops.push(op); S.ops = S.ops.slice(-16);
-  if (!conn?.open) toast('Reconnecting to the class. Your move will be sent when the connection returns.');
+  if (!S.online) toast('Reconnecting to the class. Your move will be sent when the connection returns.');
   pushPresence(); render();
   return op.o;
 }
-function myKey(){ return 'c-'+S.cid; }
+function myKey(){ return 'c-'+cleanId(S.cid); }
 function noticeResults(){
   const L = S.ledgers[S.state?.rid]; if (!L) return;
   for (const op of S.ops){
@@ -576,7 +659,6 @@ function noticeResults(){
 }
 
 // ---------- timing ----------
-const now = () => Date.now();
 function remaining(){ return S.state?.phase==='live' ? Math.max(0, S.state.endsAt - now()) : 0; }
 const fmt = ms => { const s = Math.ceil(ms/1000); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
 function tradingOpen(){ return S.state?.phase==='live' && remaining()>0; }
@@ -602,48 +684,62 @@ function render(){
   if (S.mode==='landing'){ $('barRound').textContent = 'Welcome'; return renderLanding(main); }
   $('barRound').textContent = !st ? `Class ${S.code}` : st.round===0 ? `Class ${S.code} · Lobby` : st.round===5 ? `Class ${S.code} · Debrief` : `Round ${st.round} · ${ROUNDS[st.round].name}`;
   if (S.mode==='host'){
-    if (S.view==='projector') return renderProjector(main);
-    if (S.view==='debrief') return renderDebrief(main);
-    return renderControl(main);
+    if (S.view==='projector') renderProjector(main);
+    else if (S.view==='debrief') renderDebrief(main);
+    else renderControl(main);
+    drawQRs(); return;
   }
   return renderStudent(main);
 }
 
 function renderLanding(main){
-  if (S.screenKey==='landing') return;
-  S.screenKey='landing';
   const qs = new URLSearchParams(location.search);
+  const instructor = IS_HOST;
+  const key = 'landing|'+instructor+'|'+(S.confirm||'');
+  if (S.screenKey===key) return;
+  S.screenKey=key;
   const preset = cleanCode(qs.get('code')) || cleanCode(store.get('cx-code'));
   const saved = (() => { try { return JSON.parse(store.get('cx-host')||'null'); } catch { return null; } })();
-  main.innerHTML = `<div class="stack landing">
-    <div class="stack" style="gap:8px"><span class="label">A classroom trading game</span>
-      <h1 style="font-size:clamp(2rem,6vw,3.2rem);font-weight:800;letter-spacing:-.02em">Every country makes one cheese. Everyone wants a platter.</h1>
-      <p class="muted rule">Students represent France, Italy, the Netherlands and the USA, trade cards to build varied platters, and see what trade costs and new varieties do to everyone's score.</p></div>
-    <div class="choice">
-      <form class="panel stack" id="joinForm">
-        <span class="label">Students</span><h2>Join your class</h2>
-        <div class="stack" style="gap:6px"><label for="joinCode" class="muted">Class code from the board</label>
-          <input class="code" type="text" id="joinCode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(preset)}" required></div>
-        <div class="stack" style="gap:6px"><label for="joinName" class="muted">Your trader name</label>
-          <input type="text" id="joinName" maxlength="24" placeholder="e.g. Maya R." value="${esc(S.name)}" required></div>
-        <button class="btn primary" type="submit">Join the market</button>
-      </form>
-      <div class="panel stack"><span class="label">Instructor</span><h2>Run the game</h2>
-        <p class="muted">Your browser runs the market and records every trade, so keep this window open on the projector computer during class. No accounts or installs.</p>
+  if (instructor){
+    main.innerHTML = `<div class="stack landing">
+      <div class="stack" style="gap:8px"><span class="label">Instructor</span>
+        <h1 style="font-size:clamp(2rem,6vw,3rem);font-weight:800;letter-spacing:-.02em">Run the Cheese Exchange</h1>
+        <p class="muted rule">Open this on the projector computer and keep the window open during class. It shows a QR code students scan to join.</p></div>
+      <div class="panel stack">
+        ${saved ? `<p><b>Class ${esc(saved.code)}</b> is saved in this browser${saved.state?.round ? ` (round ${saved.state.round>4?'debrief':saved.state.round})` : ' (lobby)'}.</p>` : ''}
         <div class="row">
+          ${saved ? `<button class="btn primary" type="button" id="resumeGame">Continue class ${esc(saved.code)}</button>` : ''}
           <button class="btn ${saved?'':'primary'}" type="button" id="newGame">Start a new game</button>
-          ${saved?`<button class="btn primary" type="button" id="resumeGame">Resume class ${esc(saved.code)}</button>`:''}
-        </div></div>
-    </div></div>`;
+        </div>
+        ${S.confirm==='newgame' ? `<div class="confirm"><b>Start over? Class ${esc(saved.code)} and its results will be replaced.</b>
+          <button class="btn small primary" type="button" id="newYes">Start a new game</button><button class="btn small" type="button" id="newNo">Keep class ${esc(saved.code)}</button></div>` : ''}
+      </div></div>`;
+    $('newGame').onclick = () => { if (saved && S.confirm!=='newgame'){ S.confirm='newgame'; render(); return; } S.confirm=null; S.screenKey=''; startHost(newCode(), null); };
+    if (saved) $('resumeGame').onclick = () => { S.confirm=null; S.screenKey=''; startHost(saved.code, saved); };
+    const y=$('newYes'); if (y) y.onclick = () => { S.confirm=null; S.screenKey=''; startHost(newCode(), null); };
+    const n=$('newNo'); if (n) n.onclick = () => { S.confirm=null; render(); };
+    return;
+  }
+  main.innerHTML = `<div class="stack landing" style="max-width:520px">
+    <div class="stack" style="gap:8px"><span class="label">The Cheese Exchange</span>
+      <h1 style="font-size:clamp(1.8rem,6vw,2.6rem);font-weight:800;letter-spacing:-.02em">Join your class</h1>
+      <p class="muted">Every country makes one cheese. Everyone wants a platter.</p></div>
+    <form class="panel stack" id="joinForm">
+      <div class="stack" style="gap:6px"><label for="joinCode" class="muted">Class code (on the board)</label>
+        <input class="code" type="text" id="joinCode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" value="${esc(preset)}" required></div>
+      <div class="stack" style="gap:6px"><label for="joinName" class="muted">Your name</label>
+        <input type="text" id="joinName" maxlength="24" placeholder="e.g. Maya R." value="${esc(S.name)}" autocomplete="off" required></div>
+      <button class="btn primary" type="submit">Join the market</button>
+    </form>
+  </div>`;
   $('joinForm').onsubmit = e => {
     e.preventDefault();
     const code = cleanCode($('joinCode').value), name = $('joinName').value.trim();
     if (code.length!==4) return toast('The class code has 4 letters.');
-    if (!name) return toast('Type a trader name.');
+    if (!name) return toast('Type your name.');
     S.screenKey=''; startPlayer(code, name);
   };
-  $('newGame').onclick = () => { S.screenKey=''; startHost(newCode(), null); };
-  if (saved) $('resumeGame').onclick = () => { S.screenKey=''; startHost(saved.code, saved); };
+  if (preset && !S.name) setTimeout(()=>{ try{ $('joinName').focus(); }catch{} }, 50);
 }
 
 // ----- student -----
@@ -659,7 +755,7 @@ function renderStudent(main){
     S.screenKey='wait';
     main.innerHTML = `<div class="panel stack" style="max-width:600px">
       <h2>${S.notFound ? `No market open for class ${esc(S.code)} yet` : `Connecting to class ${esc(S.code)}…`}</h2>
-      <p class="muted">${S.notFound ? 'Check the code on the board. This page keeps trying, so it connects as soon as your instructor opens the market.' : 'This takes a few seconds.'}</p>
+      <p class="muted">${S.notFound ? 'Check the code on the board. This page keeps trying, so it connects as soon as your instructor opens the market.' : (now()-(S.joinedAt||now()) > 10000 ? 'Still connecting? Reload this page. If that does not help, switch between Wi-Fi and mobile data.' : 'This takes a few seconds.')}</p>
       <div class="row"><button class="btn small" type="button" id="leave">Use a different code</button></div></div>`;
     $('leave').onclick = leaveGame;
     return;
@@ -689,10 +785,11 @@ function renderStudent(main){
   return renderTrading(main, ctx, passport, fresh);
 }
 function leaveGame(){
-  try { conn?.close(); } catch {}
-  conn = null; S.mode='landing'; S.state=null; S.ledgers={}; S.ops=[]; S.screenKey='';
+  try { DB.ref('games/'+S.code+'/presence/'+S.cid).update({on:false}); } catch {}
+  playerUnsub.forEach(f=>f()); playerUnsub = [];
+  S.mode='landing'; S.state=null; S.ledgers={}; S.ops=[]; S.screenKey='';
   store.del('cx-code'); store.del('cx-role');
-  history.replaceState(null,'',location.pathname); setNet(''); render();
+  history.replaceState(null,'',location.pathname + (S.code ? '?code='+S.code : '')); setNet(''); render();
 }
 function scoringNote(codes){
   return `<p class="muted">Scoring: each cheese earns <b>5</b> points for your first card, <b>3</b> for the second, <b>1</b> for the third, and nothing after that. Best possible platter: <span class="num">${9*codes.length}</span> points (3 of each of ${codes.length} cheeses).</p>`;
@@ -864,7 +961,16 @@ function renderStudentFinal(main, ctx, passport){
 }
 
 // ----- instructor: control -----
-function joinUrl(){ return location.origin + location.pathname + '?code=' + S.code; }
+function studentBase(){ try { return new URL(window.CX_STUDENT_PATH||'./', location.href).href.replace(/[?#].*$/,''); } catch { return location.origin + location.pathname; } }
+function joinUrl(){ return studentBase() + '?code=' + S.code; }
+function drawQRs(){
+  document.querySelectorAll('[data-qr]').forEach(el => {
+    if (el.dataset.drawn===S.code) return;
+    if (!window.QRCode){ el.hidden = true; return; }
+    el.innerHTML = ''; el.dataset.drawn = S.code;
+    try { new QRCode(el, {text: joinUrl(), width: Number(el.dataset.qr)||180, height: Number(el.dataset.qr)||180, correctLevel: QRCode.CorrectLevel.M}); } catch { el.hidden = true; }
+  });
+}
 function stepState(n){ const r = S.state.round; return n===r ? 'cur' : n<r ? 'done' : ''; }
 function renderControl(main){
   const st = S.state;
@@ -907,8 +1013,10 @@ function renderControl(main){
     </div>
     <div class="grid g-2">
       <div class="panel stack"><span class="label">Class code</span>
-        <div class="codebox">${esc(S.code)}</div>
-        <p class="muted" style="font-size:.9rem">${local ? 'Students open the game page, choose "Join your class" and type this code.' : `Students go to <b style="word-break:break-all">${esc(joinUrl())}</b> or open the page and type the code.`}</p>
+        <div class="row" style="gap:20px;align-items:center"><div class="qr" data-qr="150"></div><div class="codebox">${esc(S.code)}</div></div>
+        ${S.isActiveHost===false && S.hostReady ? '<div class="notice"><b>This window is not running the game.</b> It was opened in another window. Reload this page to take it back.</div>' : ''}
+        ${!S.hostReady ? '<div class="notice"><b>Connecting to the game server…</b> If this lasts more than a few seconds, check the internet connection.</div>' : ''}
+        <p class="muted" style="font-size:.9rem">${local ? 'Students open the game page, choose "Join your class" and type this code.' : `Students scan the QR code, or go to <b style="word-break:break-all">${esc(studentBase())}</b> and type the code.`}</p>
         <p class="muted" style="font-size:.85rem">${S.hostReady ? `${present.size} student${present.size===1?'':'s'} connected now.` : 'Opening the market…'} Keep this window open: it records every trade, and the game is saved in this browser if you reload.</p>
       </div>
       <div class="panel stack"><h3>Settings</h3>
@@ -951,8 +1059,8 @@ function renderProjector(main){
   const stats = L ? roundStats(L) : null;
   S.screenKey = 'proj';
   const local = location.protocol==='file:';
-  const codeStrip = `<div class="panel row" style="justify-content:space-between"><div><span class="label">Join with class code</span><div class="codebox">${esc(S.code)}</div></div>
-    ${local?'':`<p class="muted" style="max-width:36ch;word-break:break-all">${esc(joinUrl())}</p>`}</div>`;
+  const codeStrip = `<div class="panel row" style="justify-content:space-between;gap:24px"><div class="stack" style="gap:8px"><span class="label">Scan to join, or type the class code</span><div class="codebox">${esc(S.code)}</div>
+    ${local?'':`<p class="muted" style="max-width:40ch;word-break:break-all">${esc(studentBase())}</p>`}</div><div class="qr" data-qr="230"></div></div>`;
   if (!stats){
     const n = Object.keys(st.players||{}).length;
     main.innerHTML = `<div class="stack"><div class="proj-head"><div><span class="label">${r===0?'Lobby':r===5?'Debrief':`Round ${r} · up next`}</span>
@@ -1034,17 +1142,28 @@ window.addEventListener('beforeunload', e => { if (S.mode==='host' && H.state?.p
 
 // ---------- boot ----------
 function boot(){
-  if (typeof Peer === 'undefined'){
-    $('main').innerHTML = `<div class="panel stack" style="max-width:640px"><h2>The game couldn't load its connection library</h2><p>Check the internet connection and reload. Some school networks block it; a phone hotspot usually works.</p></div>`;
+  const cfg = window.FIREBASE_CONFIG||{};
+  if (typeof firebase === 'undefined' || !cfg.databaseURL || /PASTE/.test(cfg.databaseURL)){
+    $('main').innerHTML = `<div class="panel stack" style="max-width:640px"><h2>The game isn't connected to its database yet</h2><p>${typeof firebase === 'undefined' ? 'The connection library did not load. Check the internet connection and reload.' : 'Paste your Firebase config into this file (search for FIREBASE_CONFIG).'}</p></div>`;
     return;
   }
+  firebase.initializeApp(cfg);
+  DB = firebase.database();
+  $('main').innerHTML = `<div class="panel stack"><h2>Connecting…</h2></div>`;
+  firebase.auth().signInAnonymously().then(cred => { S.uid = cred.user.uid; if (!IS_HOST) S.cid = S.uid; bootRoles(); })
+    .catch(e => { console.warn(e);
+      $('main').innerHTML = `<div class="panel stack" style="max-width:640px"><h2>Could not connect to the game server</h2><p>Check the internet connection and reload this page.</p><p class="muted">${esc(e.code||'')}</p></div>`; });
+}
+function bootRoles(){
+  DB.ref('.info/serverTimeOffset').on('value', s => { CLOCK_OFF = Number(s.val())||0; });
   const qs = new URLSearchParams(location.search);
-  const role = store.get('cx-role');
-  if (location.hash==='#host' && role==='host'){
-    try { const saved = JSON.parse(store.get('cx-host')||'null'); if (saved?.state){ startHost(saved.code, saved); return; } } catch {}
+  if (IS_HOST){
+    S.screenKey='';
+    try { const saved = JSON.parse(store.get('cx-host')||'null'); if (saved?.state && location.hash==='#host'){ startHost(saved.code, saved); return; } } catch {}
+    render(); return;
   }
   const code = cleanCode(qs.get('code'));
-  if (role==='player' && S.name && code && code===cleanCode(store.get('cx-code'))){ startPlayer(code, S.name); return; }
+  if (S.name && code && code===cleanCode(store.get('cx-code'))){ startPlayer(code, S.name); return; }
   render();
 }
 boot();
